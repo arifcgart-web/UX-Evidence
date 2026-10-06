@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
-import { Icon } from '../components/Icon';
+import { Mark } from '../components/Mark';
 
 export function Login() {
   const { user, loading, signInWithEmail } = useAuth();
@@ -32,46 +32,47 @@ export function Login() {
   return (
     <div className="auth">
       <div className="auth-card">
-        <div className="brand large">
-          <Icon name="frame" size={22} />
-          <span>UX Evidence</span>
+        <div className="auth-band">
+          <div className="brand-tile">
+            <Mark size={34} id="login-mark" />
+          </div>
         </div>
-
-        {sent ? (
-          <>
-            <h1>Check your inbox</h1>
-            <p>
-              We sent a sign-in link to <strong>{email}</strong>. Open it on this device and you'll land back here,
-              signed in.
-            </p>
-            <button type="button" className="link" onClick={() => setSent(false)}>
-              Use a different email
-            </button>
-          </>
-        ) : (
-          <>
-            <h1>Sign in</h1>
-            <p className="muted">No password. We email you a link; click it and you're in.</p>
-            <form onSubmit={submit}>
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                className="input"
-                type="email"
-                required
-                autoFocus
-                autoComplete="email"
-                placeholder="you@studio.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              {error && <div className="error">{error}</div>}
-              <button type="submit" className="btn primary wide" disabled={busy || !email}>
-                {busy ? 'Sending…' : 'Send sign-in link'}
+        <div className="auth-in">
+          {sent ? (
+            <>
+              <h1>Check your inbox</h1>
+              <p>
+                We sent a sign-in link to <strong>{email}</strong>. Open it on this device and you'll land back here, signed in.
+              </p>
+              <button type="button" className="link" onClick={() => setSent(false)}>
+                Use a different email
               </button>
-            </form>
-          </>
-        )}
+            </>
+          ) : (
+            <>
+              <h1>Sign in to UX Evidence</h1>
+              <p className="muted">No password. We email you a link; click it and you're in.</p>
+              <form onSubmit={submit}>
+                <label htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  className="input"
+                  type="email"
+                  required
+                  autoFocus
+                  autoComplete="email"
+                  placeholder="you@studio.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                {error && <div className="error">{error}</div>}
+                <button type="submit" className="btn primary wide" disabled={busy || !email}>
+                  {busy ? 'Sending…' : 'Send sign-in link'}
+                </button>
+              </form>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

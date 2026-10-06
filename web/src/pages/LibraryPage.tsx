@@ -2,12 +2,52 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { CATEGORIES, canEdit, isCategory, type Category, type EvidenceFields } from '@shared/evidence';
 import { collectDomains, collectTags, queryEvidence, type SortOrder } from '@shared/search';
-import { deleteEvidence, listEvidence, signedUrls, updateEvidenceFields, type RemoteEvidence } from '@shared/api';
-import { fullDate, relativeDate, truncate } from '@shared/format';
+import {
+  deleteEvidence,
+  listEvidence,
+  listMembers,
+  listProfiles,
+  nameFromEmail,
+  signedUrls,
+  updateEvidenceAnnotations,
+  updateEvidenceFields,
+  type RemoteEvidence,
+} from '@shared/api';
+import { openAnnotationEditor, EDITOR_CSS } from '@shared/annotationEditor';
+import { truncate } from '@shared/format';
 import { supabase } from '../lib/supabase';
 import { useLibraries } from '../lib/libraries';
 import { Icon } from '../components/Icon';
 import { EvidenceEditForm } from '../components/EvidenceEditForm';
+import { AnnotatedImage } from '../components/AnnotatedImage';
+
+type ViewMode = 'grid' | 'list';
+const VIEW_KEY = 'uxe.view';
+
+let editorCssInjected = false;
+function ensureEditorCss() {
+  if (editorCssInjected) return;
+  const st = document.createElement('style');
+  st.textContent = EDITOR_CSS;
+  document.head.append(st);
+  editorCssInjected = true;
+}
+
+function Favicon({ domain }: { domain: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !domain) return <span className="favicon" />;
+  return (
+    <img
+      className="favicon"
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
+      alt=""
+      width={14}
+      height={14}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export function LibraryPage() {
   const { libraryId = '' } = useParams();
@@ -17,11 +57,17 @@ export function LibraryPage() {
 
   const [items, setItems] = useState<RemoteEvidence[]>([]);
   const [urls, setUrls] = useState<Map<string, string>>(new Map());
+  const [people, setPeople] = useState<Map<string, string>>(new Map());
+  const [memberCount, setMemberCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<ViewMode>(() => (localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid'));
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState({ left: false, right: false });
 
   const filters = {
     search: params.get('q') ?? '',
@@ -42,11 +88,17 @@ export function LibraryPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await listEvidence(supabase(), libraryId);
+      const db = supabase();
+      const rows = await listEvidence(db, libraryId);
       setItems(rows);
       setError(null);
-      const map = await signedUrls(supabase(), rows.flatMap((r) => [r.thumbnailPath, r.screenshotPath]));
-      setUrls(map);
+      setUrls(await signedUrls(db, rows.flatMap((r) => [r.thumbnailPath, r.screenshotPath])));
+      const members = await listMembers(db, libraryId).catch(() => []);
+      setMemberCount(members.length);
+      const names = await listProfiles(db, members.map((m) => m.userId));
+      const map = new Map<string, string>();
+      for (const m of members) map.set(m.userId, names.get(m.userId) ?? nameFromEmail(m.email));
+      setPeople(map);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load this library');
     } finally {
@@ -75,15 +127,52 @@ export function LibraryPage() {
   const domains = useMemo(() => collectDomains(items), [items]);
   const selected = items.find((i) => i.id === selectedId) ?? null;
 
+  // tag strip overflow
+  const measure = () => {
+    const el = strip.current;
+    if (!el) return;
+    setOverflow({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  };
+  useEffect(() => {
+    measure();
+    const el = strip.current;
+    if (!el) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tags, filters.tag]);
+  const scrollStrip = (dir: -1 | 1) => strip.current?.scrollBy({ left: dir * 240, behavior: 'smooth' });
+
+  const changeView = (v: ViewMode) => {
+    setView(v);
+    localStorage.setItem(VIEW_KEY, v);
+  };
+
   const update = async (id: string, fields: EvidenceFields) => {
     const next = await updateEvidenceFields(supabase(), id, fields);
     setItems((prev) => prev.map((i) => (i.id === id ? next : i)));
+  };
+
+  const annotate = async (item: RemoteEvidence) => {
+    const url = urls.get(item.screenshotPath);
+    if (!url) return;
+    ensureEditorCss();
+    const result = await openAnnotationEditor({ imageUrl: url, shapes: item.annotations, viewportFraction: 0.8, root: document.body, title: `Annotate · ${item.domain}` });
+    if (!result) return;
+    const next = await updateEvidenceAnnotations(supabase(), item.id, result);
+    setItems((prev) => prev.map((i) => (i.id === item.id ? next : i)));
   };
 
   const remove = async (item: RemoteEvidence) => {
     await deleteEvidence(supabase(), item);
     setItems((prev) => prev.filter((i) => i.id !== item.id));
     setSelectedId(null);
+  };
+
+  const copyUrl = async (item: RemoteEvidence) => {
+    await navigator.clipboard.writeText(item.url);
+    setCopiedId(item.id);
+    setTimeout(() => setCopiedId(null), 1200);
   };
 
   const exportJson = () => {
@@ -109,6 +198,12 @@ export function LibraryPage() {
     );
   }
 
+  const roleLine = library
+    ? library.role === 'owner'
+      ? 'you own this library'
+      : `you are ${library.role === 'editor' ? 'an editor' : 'a viewer'}`
+    : '';
+
   return (
     <div className="library">
       <header className="page-head">
@@ -116,15 +211,16 @@ export function LibraryPage() {
           <h1>{library?.name ?? '…'}</h1>
           <div className="muted small">
             {items.length} item{items.length === 1 ? '' : 's'}
-            {library && library.role !== 'owner' && ` · you are ${library.role === 'editor' ? 'an editor' : 'a viewer'}`}
+            {memberCount !== null && ` · ${memberCount} member${memberCount === 1 ? '' : 's'}`}
+            {roleLine && ` · ${roleLine}`}
           </div>
         </div>
         <div className="head-actions">
           <button type="button" className="btn ghost" onClick={exportJson} disabled={items.length === 0}>
-            <Icon name="download" size={14} /> Export JSON
+            <Icon name="download" size={16} /> Export JSON
           </button>
           <Link to={`/l/${libraryId}/team`} className="btn ghost">
-            <Icon name="users" size={14} /> Team
+            <Icon name="users" size={16} /> Team
           </Link>
         </div>
       </header>
@@ -135,15 +231,17 @@ export function LibraryPage() {
           <input
             ref={searchRef}
             type="search"
-            placeholder="Search evidence…  ⌘K"
+            placeholder="Search evidence…"
             value={filters.search}
             onChange={(e) => setFilter('q', e.target.value)}
             aria-label="Search evidence"
           />
-          {filters.search && (
+          {filters.search ? (
             <button type="button" className="clear" aria-label="Clear search" onClick={() => setFilter('q', null)}>
               <Icon name="close" size={12} />
             </button>
+          ) : (
+            <kbd>⌘K</kbd>
           )}
         </div>
         <select className="select sm" value={filters.category ?? ''} onChange={(e) => setFilter('cat', e.target.value || null)} aria-label="Category">
@@ -164,12 +262,20 @@ export function LibraryPage() {
         </select>
         <button
           type="button"
-          className="iconbtn"
+          className="iconbtn boxed"
           title={filters.sort === 'newest' ? 'Newest first' : 'Oldest first'}
           onClick={() => setFilter('sort', filters.sort === 'newest' ? 'oldest' : null)}
         >
           <Icon name="sort" size={15} className={filters.sort === 'oldest' ? 'flip' : undefined} />
         </button>
+        <div className="seg" role="radiogroup" aria-label="View">
+          <button type="button" role="radio" aria-checked={view === 'grid'} className={view === 'grid' ? 'on' : ''} title="Grid" onClick={() => changeView('grid')}>
+            <Icon name="grid" size={15} />
+          </button>
+          <button type="button" role="radio" aria-checked={view === 'list'} className={view === 'list' ? 'on' : ''} title="List" onClick={() => changeView('list')}>
+            <Icon name="list" size={15} />
+          </button>
+        </div>
         {hasFilter && (
           <button type="button" className="link" onClick={clearFilters}>
             Clear
@@ -177,19 +283,29 @@ export function LibraryPage() {
         )}
       </div>
 
-      {(filters.tag || tags.length > 0) && (
-        <div className="tag-row">
-          {filters.tag ? (
-            <button type="button" className="tag active" onClick={() => setFilter('tag', null)}>
-              {filters.tag} <Icon name="close" size={10} />
-            </button>
-          ) : (
-            tags.slice(0, 14).map((t) => (
-              <button type="button" key={t} className="tag" onClick={() => setFilter('tag', t)}>
-                {t}
+      {tags.length > 0 && (
+        <div className="tag-strip-wrap">
+          <button type="button" className={`strip-arrow${overflow.left ? '' : ' hidden'}`} aria-label="Scroll tags left" onClick={() => scrollStrip(-1)}>
+            <Icon name="chevronLeft" size={14} />
+          </button>
+          <div className="tag-strip" ref={strip} onScroll={measure}>
+            {filters.tag && (
+              <button type="button" className="tag active" onClick={() => setFilter('tag', null)}>
+                {filters.tag} <Icon name="close" size={10} />
               </button>
-            ))
-          )}
+            )}
+            {tags
+              .filter((t) => t !== filters.tag)
+              .map((t) => (
+                <button type="button" key={t} className="tag" onClick={() => setFilter('tag', t)}>
+                  {t}
+                </button>
+              ))}
+          </div>
+          {overflow.right && <div className="strip-fade" />}
+          <button type="button" className={`strip-arrow${overflow.right ? '' : ' hidden'}`} aria-label="Scroll tags right" onClick={() => scrollStrip(1)}>
+            <Icon name="chevronRight" size={14} />
+          </button>
         </div>
       )}
 
@@ -203,12 +319,11 @@ export function LibraryPage() {
       {!loading && items.length === 0 && !error && (
         <div className="empty">
           <div className="empty-art">
-            <Icon name="frame" size={28} />
+            <Icon name="camera" size={28} />
           </div>
           <h3>Nothing here yet</h3>
           <p>
-            Capture evidence with the <Link to="/extension">Chrome extension</Link> while signed in to this account and it
-            will appear here.
+            Capture evidence with the <Link to="/extension">Chrome extension</Link> while signed in to this account and it will appear here.
           </p>
         </div>
       )}
@@ -219,21 +334,36 @@ export function LibraryPage() {
         </div>
       )}
 
-      <div className="grid">
+      <div className={view === 'grid' ? 'grid' : 'list-view'}>
         {visible.map((item) => (
           <article key={item.id} className={`card${item.id === selectedId ? ' selected' : ''}`}>
             <button type="button" className="card-main" onClick={() => setSelectedId(item.id)}>
-              <div className="thumb">
-                {urls.get(item.thumbnailPath) ? <img src={urls.get(item.thumbnailPath)} alt="" loading="lazy" /> : <div className="thumb-ph" />}
-              </div>
+              {urls.get(item.thumbnailPath) ? (
+                <AnnotatedImage className="thumb" src={urls.get(item.thumbnailPath)!} alt="" shapes={item.annotations} cover>
+                  <span className="thumb-badge cat">{item.category}</span>
+                  {item.annotations.length > 0 && (
+                    <span className="thumb-badge marks">
+                      <Icon name="pen" size={11} /> {item.annotations.length}
+                    </span>
+                  )}
+                </AnnotatedImage>
+              ) : (
+                <div className="thumb">
+                  <div className="thumb-ph" />
+                </div>
+              )}
               <div className="card-body">
                 <div className="card-meta">
+                  <Favicon domain={item.domain} />
                   <span className="site">{item.domain}</span>
-                  <span className="dot">·</span>
-                  <span className="cat">{item.category}</span>
+                  {item.pageTitle && (
+                    <>
+                      <span>·</span>
+                      <span className="title">{item.pageTitle}</span>
+                    </>
+                  )}
                 </div>
-                <p className="obs">{truncate(item.observation, 110)}</p>
-                <div className="card-foot">{relativeDate(item.createdAt)}</div>
+                <p className="obs">{truncate(item.observation, 120)}</p>
               </div>
             </button>
             {item.tags.length > 0 && (
@@ -245,6 +375,14 @@ export function LibraryPage() {
                 ))}
               </div>
             )}
+            <div className="card-hover">
+              <a className="iconbtn" href={item.url} target="_blank" rel="noreferrer" title="Open source page">
+                <Icon name="external" size={14} />
+              </a>
+              <button type="button" className="iconbtn" title="Copy URL" onClick={() => void copyUrl(item)}>
+                <Icon name={copiedId === item.id ? 'check' : 'copy'} size={14} />
+              </button>
+            </div>
           </article>
         ))}
       </div>
@@ -255,10 +393,12 @@ export function LibraryPage() {
           screenshotUrl={urls.get(selected.screenshotPath)}
           editable={editable}
           knownTags={tags}
+          addedBy={selected.createdBy ? people.get(selected.createdBy) ?? null : null}
           onClose={() => setSelectedId(null)}
           onTag={(t) => setFilter('tag', t)}
           onUpdate={update}
           onDelete={remove}
+          onAnnotate={annotate}
         />
       )}
     </div>
@@ -272,18 +412,22 @@ interface DrawerProps {
   screenshotUrl: string | undefined;
   editable: boolean;
   knownTags: string[];
+  addedBy: string | null;
   onClose: () => void;
   onTag: (tag: string) => void;
   onUpdate: (id: string, fields: EvidenceFields) => Promise<void>;
   onDelete: (item: RemoteEvidence) => Promise<void>;
+  onAnnotate: (item: RemoteEvidence) => Promise<void>;
 }
 
-function DetailDrawer({ item, screenshotUrl, editable, knownTags, onClose, onTag, onUpdate, onDelete }: DrawerProps) {
+function DetailDrawer({ item, screenshotUrl, editable, knownTags, addedBy, onClose, onTag, onUpdate, onDelete, onAnnotate }: DrawerProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [showMarks, setShowMarks] = useState(true);
+  const hasMarks = item.annotations.length > 0;
 
   useEffect(() => {
     setEditing(false);
@@ -331,27 +475,34 @@ function DetailDrawer({ item, screenshotUrl, editable, knownTags, onClose, onTag
             {editable && !editing && (
               <>
                 <button type="button" className="iconbtn" title="Edit" onClick={() => setEditing(true)}>
-                  <Icon name="edit" size={16} />
+                  <Icon name="edit" size={18} />
                 </button>
                 <button type="button" className="iconbtn danger" title="Delete" onClick={() => setConfirm(true)}>
-                  <Icon name="trash" size={16} />
+                  <Icon name="trash" size={18} />
                 </button>
               </>
             )}
             <button type="button" className="iconbtn" title="Close" onClick={onClose}>
-              <Icon name="close" size={16} />
+              <Icon name="close" size={18} />
             </button>
           </div>
         </header>
 
         <div className="drawer-body">
           {screenshotUrl ? (
-            <a className="shot" href={screenshotUrl} target="_blank" rel="noreferrer" title="Open full size">
-              <img src={screenshotUrl} alt={item.observation} />
-              <span className="shot-dim">
-                <Icon name="expand" size={11} /> {item.screenshotWidth}×{item.screenshotHeight}
-              </span>
-            </a>
+            <div className="shot-wrap">
+              <a className="shot" href={screenshotUrl} target="_blank" rel="noreferrer" title="Open full size">
+                <AnnotatedImage src={screenshotUrl} alt={item.observation} shapes={item.annotations} hidden={!showMarks} />
+                <span className="shot-dim">
+                  <Icon name="expand" size={11} /> {item.screenshotWidth}×{item.screenshotHeight}
+                </span>
+              </a>
+              {hasMarks && (
+                <button type="button" className={`marks-toggle${showMarks ? '' : ' off'}`} onClick={() => setShowMarks((v) => !v)}>
+                  <Icon name={showMarks ? 'eye' : 'eyeOff'} size={12} /> {showMarks ? 'Markings on' : 'Markings off'}
+                </button>
+              )}
+            </div>
           ) : (
             <div className="shot placeholder" />
           )}
@@ -422,19 +573,32 @@ function DetailDrawer({ item, screenshotUrl, editable, knownTags, onClose, onTag
                   <dd className="url" title={item.url}>
                     {item.url}
                   </dd>
-                  <dt>Captured</dt>
+                  <dt>Viewport</dt>
                   <dd className="wrap">
-                    {fullDate(item.createdAt)} · {item.viewport.width}×{item.viewport.height} viewport
+                    {item.viewport.width}×{item.viewport.height}
                     {item.pageType ? ` · ${item.pageType}` : ''}
                   </dd>
+                  {addedBy && (
+                    <>
+                      <dt>Added by</dt>
+                      <dd>{addedBy}</dd>
+                    </>
+                  )}
                 </dl>
               </section>
+              {editable && (
+                <div className="detail-actions one">
+                  <button type="button" className="btn ghost" onClick={() => void onAnnotate(item)}>
+                    <Icon name="pen" size={18} /> {hasMarks ? 'Edit markings' : 'Annotate'}
+                  </button>
+                </div>
+              )}
               <div className="detail-actions">
                 <a className="btn ghost" href={item.url} target="_blank" rel="noreferrer">
-                  <Icon name="external" size={14} /> Open source page
+                  <Icon name="external" size={18} /> Open source page
                 </a>
                 <button type="button" className="btn ghost" onClick={() => void copy()}>
-                  <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copied' : 'Copy URL'}
+                  <Icon name={copied ? 'check' : 'copy'} size={18} /> {copied ? 'Copied' : 'Copy URL'}
                 </button>
               </div>
             </>

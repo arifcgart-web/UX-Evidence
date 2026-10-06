@@ -7,6 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { CaptureMode, Category, EvidenceBase, Library, LibraryRole, Viewport } from './evidence';
 import { isCategory } from './evidence';
+import { isShapeArray, type Shape } from './annotations';
 
 export const BUCKET = 'evidence';
 
@@ -30,6 +31,7 @@ export interface EvidenceRow {
   thumbnail_path: string;
   screenshot_width: number;
   screenshot_height: number;
+  annotations: Shape[] | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -62,7 +64,7 @@ export interface Invite {
 }
 
 export const EVIDENCE_COLUMNS =
-  'id,library_id,created_by,url,domain,page_title,page_type,viewport,capture_mode,category,observation,why_it_matters,notes,tags,screenshot_path,thumbnail_path,screenshot_width,screenshot_height,created_at,updated_at,deleted_at';
+  'id,library_id,created_by,url,domain,page_title,page_type,viewport,capture_mode,category,observation,why_it_matters,notes,tags,screenshot_path,thumbnail_path,screenshot_width,screenshot_height,annotations,created_at,updated_at,deleted_at';
 
 export function rowToEvidence(row: EvidenceRow): RemoteEvidence {
   return {
@@ -84,6 +86,7 @@ export function rowToEvidence(row: EvidenceRow): RemoteEvidence {
     thumbnailPath: row.thumbnail_path,
     screenshotWidth: row.screenshot_width,
     screenshotHeight: row.screenshot_height,
+    annotations: isShapeArray(row.annotations) ? row.annotations : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
@@ -277,6 +280,7 @@ export async function upsertEvidence(db: SupabaseClient, e: UpsertEvidenceInput)
         thumbnail_path: e.thumbnailPath,
         screenshot_width: e.screenshotWidth,
         screenshot_height: e.screenshotHeight,
+        annotations: e.annotations ?? [],
         created_at: e.createdAt,
         updated_at: e.updatedAt,
         deleted_at: null,
@@ -305,6 +309,18 @@ export async function updateEvidenceFields(
       tags: fields.tags,
       updated_at: new Date().toISOString(),
     })
+    .eq('id', id)
+    .select(EVIDENCE_COLUMNS)
+    .single();
+  throwIf(error);
+  return rowToEvidence(data as unknown as EvidenceRow);
+}
+
+/** Replace the annotation shapes (web app editor). */
+export async function updateEvidenceAnnotations(db: SupabaseClient, id: string, annotations: Shape[]): Promise<RemoteEvidence> {
+  const { data, error } = await db
+    .from('evidence')
+    .update({ annotations, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select(EVIDENCE_COLUMNS)
     .single();
@@ -358,5 +374,56 @@ export async function signedUrls(db: SupabaseClient, paths: string[], ttlSeconds
   for (const entry of data ?? []) {
     if (entry.signedUrl && entry.path) out.set(entry.path, entry.signedUrl);
   }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Profiles (display names)
+// ---------------------------------------------------------------------------
+
+export interface Profile {
+  userId: string;
+  displayName: string;
+}
+
+/** Fallback when no display name is set: the part before the @. */
+export function nameFromEmail(email: string | null | undefined): string {
+  const local = (email ?? '').split('@')[0] ?? '';
+  return local ? local.charAt(0).toUpperCase() + local.slice(1) : 'You';
+}
+
+export async function listProfiles(db: SupabaseClient, userIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (userIds.length === 0) return out;
+  const { data, error } = await db.from('profiles').select('user_id, display_name').in('user_id', userIds);
+  if (error) return out; // table may not exist yet; names just fall back
+  for (const row of data ?? []) out.set(row.user_id, row.display_name);
+  return out;
+}
+
+export async function getMyProfile(db: SupabaseClient): Promise<Profile | null> {
+  const { data: user } = await db.auth.getUser();
+  const uid = user.user?.id;
+  if (!uid) return null;
+  const { data } = await db.from('profiles').select('user_id, display_name').eq('user_id', uid).maybeSingle();
+  return data ? { userId: data.user_id, displayName: data.display_name } : null;
+}
+
+export async function saveMyProfile(db: SupabaseClient, displayName: string): Promise<void> {
+  const { data: user } = await db.auth.getUser();
+  const uid = user.user?.id;
+  if (!uid) throw new Error('Sign in first');
+  const { error } = await db
+    .from('profiles')
+    .upsert({ user_id: uid, display_name: displayName.trim(), updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+  throwIf(error);
+}
+
+/** Item counts per library the user can see (RLS does the filtering). */
+export async function countEvidenceByLibrary(db: SupabaseClient): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const { data, error } = await db.from('evidence').select('library_id').is('deleted_at', null);
+  if (error) return out;
+  for (const row of data ?? []) out.set(row.library_id, (out.get(row.library_id) ?? 0) + 1);
   return out;
 }

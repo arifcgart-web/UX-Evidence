@@ -1,56 +1,22 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import type { LibraryRole } from '@shared/evidence';
-import {
-  createInvite,
-  deleteLibrary,
-  leaveLibrary,
-  listInvites,
-  listMembers,
-  removeMember,
-  renameLibrary,
-  revokeInvite,
-  setMemberRole,
-  type Invite,
-  type Member,
-} from '@shared/api';
-import { relativeDate } from '@shared/format';
+import { deleteLibrary, leaveLibrary, renameLibrary } from '@shared/api';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../lib/auth';
 import { useLibraries } from '../lib/libraries';
 import { Icon } from '../components/Icon';
+import { MembersManager } from '../components/MembersManager';
 
 export function TeamPage() {
   const { libraryId = '' } = useParams();
-  const { user } = useAuth();
   const { libraries, refresh } = useLibraries();
   const navigate = useNavigate();
   const library = libraries.find((l) => l.id === libraryId);
   const isOwner = library?.role === 'owner';
 
-  const [members, setMembers] = useState<Member[]>([]);
-  const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('editor');
-  const [inviteLabel, setInviteLabel] = useState('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const db = supabase();
-      setMembers(await listMembers(db, libraryId));
-      if (isOwner) setInvites(await listInvites(db, libraryId));
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load the team');
-    }
-  }, [libraryId, isOwner]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
   useEffect(() => {
     setName(library?.name ?? '');
   }, [library?.name]);
@@ -58,25 +24,9 @@ export function TeamPage() {
   const run = async (fn: () => Promise<unknown>) => {
     try {
       await fn();
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
     }
-  };
-
-  const invite = (e: FormEvent) => {
-    e.preventDefault();
-    void run(async () => {
-      await createInvite(supabase(), libraryId, inviteRole, inviteLabel.trim());
-      setInviteLabel('');
-    });
-  };
-
-  const inviteUrl = (token: string) => `${location.origin}/invite/${token}`;
-  const copy = async (inv: Invite) => {
-    await navigator.clipboard.writeText(inviteUrl(inv.token));
-    setCopiedId(inv.id);
-    setTimeout(() => setCopiedId(null), 1500);
   };
 
   const rename = (e: FormEvent) => {
@@ -123,95 +73,8 @@ export function TeamPage() {
 
       <section className="panel">
         <h2>Members</h2>
-        <ul className="members">
-          {members.map((m) => (
-            <li key={m.userId}>
-              <div className="member-id">
-                <span className="avatar">{(m.email[0] ?? '?').toUpperCase()}</span>
-                <div>
-                  <div className="member-email">
-                    {m.email || 'unknown'} {m.userId === user?.id && <span className="you">you</span>}
-                  </div>
-                  <div className="muted small">joined {relativeDate(m.createdAt)}</div>
-                </div>
-              </div>
-              <div className="member-actions">
-                {isOwner && m.role !== 'owner' ? (
-                  <>
-                    <select
-                      className="select sm"
-                      value={m.role}
-                      onChange={(e) => void run(() => setMemberRole(supabase(), libraryId, m.userId, e.target.value as LibraryRole))}
-                    >
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                    <button type="button" className="iconbtn danger" title="Remove" onClick={() => void run(() => removeMember(supabase(), libraryId, m.userId))}>
-                      <Icon name="close" size={14} />
-                    </button>
-                  </>
-                ) : (
-                  <span className="role-pill">{m.role}</span>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-        <p className="muted small roles-help">
-          <strong>Owner</strong> manages members and settings · <strong>Editor</strong> adds and edits evidence ·{' '}
-          <strong>Viewer</strong> can only browse.
-        </p>
+        <MembersManager library={library} />
       </section>
-
-      {isOwner && (
-        <section className="panel">
-          <h2>Invite people</h2>
-          <p className="muted">
-            Create a link and send it however you like (Slack, email). Whoever opens it and signs in joins this library.
-            Links work once and expire after 14 days.
-          </p>
-          <form className="invite-form" onSubmit={invite}>
-            <input className="input" placeholder="Note, e.g. “for Anna” (optional)" value={inviteLabel} maxLength={60} onChange={(e) => setInviteLabel(e.target.value)} />
-            <select className="select" value={inviteRole} onChange={(e) => setInviteRole(e.target.value as 'editor' | 'viewer')}>
-              <option value="editor">Editor</option>
-              <option value="viewer">Viewer</option>
-            </select>
-            <button type="submit" className="btn primary">
-              <Icon name="plus" size={14} /> Create link
-            </button>
-          </form>
-
-          {invites.length > 0 && (
-            <ul className="invites">
-              {invites.map((inv) => {
-                const expired = Date.parse(inv.expiresAt) < Date.now();
-                return (
-                  <li key={inv.id} className={inv.acceptedAt || expired ? 'done' : ''}>
-                    <div>
-                      <div className="invite-label">
-                        {inv.label || 'Invite link'} <span className="role-pill">{inv.role}</span>
-                      </div>
-                      <div className="muted small">
-                        {inv.acceptedAt ? `accepted ${relativeDate(inv.acceptedAt)}` : expired ? 'expired' : `created ${relativeDate(inv.createdAt)}`}
-                      </div>
-                    </div>
-                    <div className="member-actions">
-                      {!inv.acceptedAt && !expired && (
-                        <button type="button" className="btn ghost sm" onClick={() => void copy(inv)}>
-                          <Icon name={copiedId === inv.id ? 'check' : 'copy'} size={13} /> {copiedId === inv.id ? 'Copied' : 'Copy link'}
-                        </button>
-                      )}
-                      <button type="button" className="iconbtn danger" title="Revoke" onClick={() => void run(() => revokeInvite(supabase(), inv.id))}>
-                        <Icon name="trash" size={14} />
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      )}
 
       <section className="panel">
         <h2>Settings</h2>
@@ -227,7 +90,9 @@ export function TeamPage() {
               </div>
             </form>
             {library.isPersonal ? (
-              <p className="muted small">This is your personal library; it can't be deleted.</p>
+              <p className="muted small" style={{ marginTop: 12 }}>
+                This is your personal library; it can't be deleted.
+              </p>
             ) : (
               <div className="danger-zone">
                 {confirmDelete ? (

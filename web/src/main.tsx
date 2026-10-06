@@ -4,6 +4,9 @@ import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom'
 import { isConfigured } from './lib/supabase';
 import { AuthProvider } from './lib/auth';
 import { LibrariesProvider } from './lib/libraries';
+import { ProfileProvider } from './lib/profile';
+import { ThemeProvider } from './lib/theme';
+import { BackgroundProvider } from './lib/background';
 import { SetupPage } from './pages/SetupPage';
 import { Login } from './pages/Login';
 import { Shell } from './pages/Shell';
@@ -17,7 +20,11 @@ import './styles.css';
 const root = createRoot(document.getElementById('root')!);
 
 if (!isConfigured) {
-  root.render(<SetupPage />);
+  root.render(
+    <ThemeProvider>
+      <SetupPage />
+    </ThemeProvider>,
+  );
 } else {
   const router = createBrowserRouter([
     { path: '/login', element: <Login /> },
@@ -37,11 +44,17 @@ if (!isConfigured) {
 
   root.render(
     <StrictMode>
-      <AuthProvider>
-        <LibrariesProvider>
-          <RouterProvider router={router} />
-        </LibrariesProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <BackgroundProvider>
+        <AuthProvider>
+          <ProfileProvider>
+            <LibrariesProvider>
+              <RouterProvider router={router} />
+            </LibrariesProvider>
+          </ProfileProvider>
+        </AuthProvider>
+        </BackgroundProvider>
+      </ThemeProvider>
     </StrictMode>,
   );
 }
