@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "UX Evidence Collector",
+  "version": "0.2.0",
+  "description": "Capture UX patterns from any website, note why they matter, and build a searchable UX/CRO evidence library — alone or with your team.",
+  "minimum_chrome_version": "109",
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "UX Evidence Collector",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "commands": {
+    "start-capture": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "Start evidence capture on the current page"
+    }
+  },
+
+  "permissions": ["activeTab", "scripting", "storage", "alarms"]
+}

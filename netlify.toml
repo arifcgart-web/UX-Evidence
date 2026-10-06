@@ -1,0 +1,22 @@
+# Netlify builds the web app from the repo root so the shared/ folder is available.
+# Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY under Site settings → Environment variables.
+
+[build]
+  command = "npm run build:web"
+  publish = "web/dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Single-page app: every route is handled by index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

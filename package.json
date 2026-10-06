@@ -1,0 +1,17 @@
+{
+  "name": "ux-evidence",
+  "version": "0.2.0",
+  "private": true,
+  "description": "UX Evidence Collector — Chrome extension + web app for capturing and organising UX/CRO evidence.",
+  "workspaces": [
+    "extension",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w extension && npm run build -w web",
+    "build:web": "npm run build -w web",
+    "build:extension": "npm run build -w extension",
+    "dev:web": "npm run dev -w web",
+    "typecheck": "npm run typecheck -w extension && npm run typecheck -w web"
+  }
+}
