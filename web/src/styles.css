@@ -215,3 +215,10 @@ code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: 
   .invite-form { grid-template-columns: 1fr; }
   .drawer { width: 100vw; }
 }
+
+/* ---------- Extension hand-over ---------- */
+.handover { margin: 18px 0 26px; }
+.handover-row { display: flex; gap: 8px; margin: 12px 0; }
+.handover-row .input { flex: 1; }
+.input.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+.handover .notice { margin-top: 10px; }
