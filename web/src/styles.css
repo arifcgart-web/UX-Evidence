@@ -13,7 +13,8 @@
   --danger: #dc2626;
   --danger-soft: #fef2f2;
   --radius: 8px;
-  --gap: clamp(16px, 7vw, 110px);
+  --gap-y: 24px;
+  --gap-x: 32px;
   --panel-radius: 24px;
 
   /* content panel (light) */
@@ -523,7 +524,7 @@ code {
    ========================================================================= */
 .shell {
   height: 100vh;
-  padding: var(--gap);
+  padding: var(--gap-y) var(--gap-x);
   display: flex;
 }
 .app-panel {
@@ -1820,14 +1821,10 @@ code {
 /* =========================================================================
    Responsive
    ========================================================================= */
-@media (max-width: 1100px) {
-  :root {
-    --gap: 32px;
-  }
-}
 @media (max-width: 860px) {
   :root {
-    --gap: 12px;
+    --gap-y: 12px;
+    --gap-x: 12px;
     --panel-radius: 16px;
   }
   .sidebar {
