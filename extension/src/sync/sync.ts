@@ -95,6 +95,21 @@ export async function verifyCode(email: string, input: string): Promise<void> {
     }
   }
   if (error) throw new Error(error.message);
+  await afterSignIn();
+}
+
+/**
+ * Sign in with a session handed over by the web app (no email involved).
+ * The web app, already signed in, sends its tokens via externally_connectable
+ * messaging; we adopt them as our own session.
+ */
+export async function adoptSession(accessToken: string, refreshToken: string): Promise<void> {
+  const { error } = await (await cloud()).auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+  if (error) throw new Error(error.message);
+  await afterSignIn();
+}
+
+async function afterSignIn(): Promise<void> {
   await refreshLibraries();
 
   // First sign-in: choose the personal library and adopt everything captured so far.
@@ -177,6 +192,8 @@ export async function syncNow(): Promise<SyncStatus> {
     if (!account) return getStatus();
 
     await push();
+    // Library names/roles can change on the web; keep the picker current.
+    await refreshLibraries().catch(() => undefined);
     const active = await metaGet<string>(META_ACTIVE_LIBRARY);
     if (active) await pull(active);
 
@@ -269,6 +286,7 @@ async function pull(libraryId: string): Promise<void> {
         whyItMatters: row.whyItMatters,
         notes: row.notes,
         tags: row.tags,
+        annotations: row.annotations ?? [],
         libraryId: row.libraryId,
         syncState: 'synced',
         searchText: '',

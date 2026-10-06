@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useEvidence } from './useEvidence';
 import { Home, EMPTY_FILTERS, type Filters } from './views/Home';
 import { Detail } from './views/Detail';
+import { Settings } from './views/Settings';
 import { collectTags } from '../storage/evidenceStore';
 import type { EvidenceState } from './useEvidence';
 
@@ -13,7 +14,7 @@ function canEditActive(e: EvidenceState): boolean {
   return !lib || lib.role !== 'viewer';
 }
 
-type View = { name: 'home' } | { name: 'detail'; id: string };
+type View = { name: 'home' } | { name: 'detail'; id: string } | { name: 'settings' };
 
 export function App() {
   const evidence = useEvidence();
@@ -27,6 +28,10 @@ export function App() {
     setFilters({ ...EMPTY_FILTERS, tag });
     setView({ name: 'home' });
   }, []);
+
+  if (view.name === 'settings') {
+    return <Settings status={evidence.status} onBack={goHome} onChanged={evidence.reload} onSync={evidence.syncNow} />;
+  }
 
   if (view.name === 'detail') {
     const record = evidence.records.find((r) => r.id === view.id);
@@ -56,8 +61,7 @@ export function App() {
       filters={filters}
       onFilters={setFilters}
       onOpen={(id) => setView({ name: 'detail', id })}
-      onReload={evidence.reload}
-      onSync={evidence.syncNow}
+      onSettings={() => setView({ name: 'settings' })}
     />
   );
 }

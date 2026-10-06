@@ -10,6 +10,7 @@ import { IDX_CREATED_AT, IDX_STATUS, IDX_SYNC, STORE_EVIDENCE, idb, metaGet, ope
 import type { CaptureContext, CaptureMode, EvidenceFields, EvidenceRecord } from '../types/evidence';
 import { DEFAULT_CATEGORY, isCategory } from '../types/evidence';
 import { buildSearchText, normalizeTags } from '@shared/search';
+import type { Shape } from '@shared/annotations';
 import { META_ACTIVE_LIBRARY } from '../sync/keys';
 
 export { normalizeTags, queryEvidence, collectTags, collectDomains } from '@shared/search';
@@ -57,6 +58,7 @@ export async function createDraft(input: DraftInput): Promise<EvidenceRecord> {
     viewport: input.context.viewport,
     captureMode: input.captureMode,
     pageType: input.context.pageType,
+    annotations: [],
     libraryId,
     syncState: libraryId ? 'pending' : 'local',
     searchText: '',
@@ -84,11 +86,11 @@ function applyFields(existing: EvidenceRecord, fields: EvidenceFields): Evidence
 }
 
 /** Turn a draft into a library item. Returns null if the draft vanished. */
-export async function commitDraft(draftId: string, fields: EvidenceFields): Promise<EvidenceRecord | null> {
+export async function commitDraft(draftId: string, fields: EvidenceFields, annotations?: Shape[]): Promise<EvidenceRecord | null> {
   return withStore(STORE_EVIDENCE, 'readwrite', async (store) => {
     const existing = await idb.get<EvidenceRecord>(store, draftId);
     if (!existing) return null;
-    const next = { ...applyFields(existing, fields), status: 'saved' as const };
+    const next = { ...applyFields(existing, fields), status: 'saved' as const, annotations: annotations ?? existing.annotations ?? [] };
     await idb.put(store, next);
     return next;
   });
@@ -99,6 +101,22 @@ export async function updateEvidence(id: string, fields: EvidenceFields): Promis
     const existing = await idb.get<EvidenceRecord>(store, id);
     if (!existing) return null;
     const next = applyFields(existing, fields);
+    await idb.put(store, next);
+    return next;
+  });
+}
+
+/** Replace the annotation shapes; marks the item pending for sync. */
+export async function setAnnotations(id: string, annotations: Shape[]): Promise<EvidenceRecord | null> {
+  return withStore(STORE_EVIDENCE, 'readwrite', async (store) => {
+    const existing = await idb.get<EvidenceRecord>(store, id);
+    if (!existing) return null;
+    const next: EvidenceRecord = {
+      ...existing,
+      annotations,
+      updatedAt: new Date().toISOString(),
+      syncState: existing.libraryId ? 'pending' : 'local',
+    };
     await idb.put(store, next);
     return next;
   });

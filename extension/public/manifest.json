@@ -38,5 +38,9 @@
     }
   },
 
-  "permissions": ["activeTab", "scripting", "storage", "alarms"]
+  "permissions": ["activeTab", "scripting", "storage", "alarms"],
+
+  "externally_connectable": {
+    "matches": ["https://*.netlify.app/*", "http://localhost/*"]
+  }
 }

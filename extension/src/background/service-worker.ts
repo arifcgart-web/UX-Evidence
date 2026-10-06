@@ -25,6 +25,7 @@ import { metaGet } from '../storage/db';
 import { processCapture } from '../utils/image';
 import { friendlyError, restrictionReason } from '../utils/restrictedPages';
 import {
+  adoptSession,
   fetchScreenshot,
   getStatus,
   refreshLibraries,
@@ -138,7 +139,7 @@ async function handle(
 
     case 'SAVE_EVIDENCE': {
       try {
-        const saved = await commitDraft(message.draftId, message.fields);
+        const saved = await commitDraft(message.draftId, message.fields, message.annotations);
         if (!saved) return fail('This capture expired. Please capture it again.');
         void syncNow();
         return ok({ id: saved.id });
@@ -243,6 +244,40 @@ chrome.runtime.onMessage.addListener(
       .then(sendResponse)
       .catch((error: unknown) => sendResponse(fail(friendlyError(error))));
     return true; // keep the channel open for the async response
+  },
+);
+
+/**
+ * Sign-in hand-over from the web app. The web app (listed in the manifest's
+ * `externally_connectable`) sends the session it already holds, so the user
+ * never needs a second email. The payload also carries the project URL/key, so
+ * a fresh extension can be fully configured in one click.
+ */
+interface HandoverMessage {
+  type: 'UXE_HANDOVER';
+  supabaseUrl: string;
+  anonKey: string;
+  accessToken: string;
+  refreshToken: string;
+}
+
+chrome.runtime.onMessageExternal.addListener(
+  (message: HandoverMessage, sender, sendResponse: (r: Result<unknown>) => void) => {
+    (async () => {
+      if (!message || message.type !== 'UXE_HANDOVER') return fail('Unknown message');
+      if (!sender.origin || !/^https:\/\//.test(sender.origin)) return fail('Untrusted origin');
+      try {
+        await setConfig({ url: message.supabaseUrl, anonKey: message.anonKey });
+        await adoptSession(message.accessToken, message.refreshToken);
+        chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 15 });
+        return ok(await getStatus());
+      } catch (error) {
+        return fail(authError(error));
+      }
+    })()
+      .then(sendResponse)
+      .catch((error: unknown) => sendResponse(fail(friendlyError(error))));
+    return true;
   },
 );
 

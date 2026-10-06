@@ -1,5 +1,6 @@
 import type { EvidenceRecord } from '../../types/evidence';
-import { relativeDate, truncate } from '@shared/format';
+import { truncate } from '@shared/format';
+import { AnnotatedImage } from './AnnotatedImage';
 
 interface Props {
   record: EvidenceRecord;
@@ -12,9 +13,7 @@ export function EvidenceCard({ record, thumbUrl, onOpen, onTag }: Props) {
   return (
     <article className="card">
       <button type="button" className="card-main" onClick={() => onOpen(record.id)}>
-        <div className="thumb">
-          <img src={thumbUrl} alt="" loading="lazy" />
-        </div>
+        <AnnotatedImage className="thumb" src={thumbUrl} alt="" shapes={record.annotations ?? []} cover />
         <div className="card-body">
           <div className="card-meta">
             <span className="site">{record.domain}</span>
@@ -22,9 +21,6 @@ export function EvidenceCard({ record, thumbUrl, onOpen, onTag }: Props) {
             <span className="cat">{record.category}</span>
           </div>
           <p className="obs">{truncate(record.observation, 90)}</p>
-          <div className="card-foot">
-            <span className="date">{relativeDate(record.createdAt)}</span>
-          </div>
         </div>
       </button>
       {record.tags.length > 0 && (

@@ -4,7 +4,7 @@ import { CATEGORIES, isCategory } from '../../types/evidence';
 import { collectDomains, collectTags, queryEvidence, type SortOrder } from '../../storage/evidenceStore';
 import { EvidenceCard } from '../components/EvidenceCard';
 import { Icon } from '../components/Icon';
-import { AccountPanel } from '../components/AccountPanel';
+import { Hero } from '../components/Hero';
 import type { SyncStatus } from '../../sync/sync';
 import { send } from '../messaging';
 import { restrictionReason } from '../../utils/restrictedPages';
@@ -28,17 +28,25 @@ interface Props {
   filters: Filters;
   onFilters: (f: Filters) => void;
   onOpen: (id: string) => void;
-  onReload: () => Promise<void>;
-  onSync: () => Promise<void>;
+  onSettings: () => void;
 }
 
-export function Home({ records, loading, error, status, thumbUrl, filters, onFilters, onOpen, onReload, onSync }: Props) {
+function syncPill(status: SyncStatus | null): { label: string; tone: 'ok' | 'warn' | 'off' } {
+  if (!status || !status.configured || !status.account) return { label: 'Not synced', tone: 'off' };
+  if (status.syncing) return { label: 'Syncing…', tone: 'ok' };
+  if (status.lastError) return { label: 'Sync issue', tone: 'warn' };
+  if (status.pending > 0) return { label: `${status.pending} pending`, tone: 'warn' };
+  return { label: 'Synced', tone: 'ok' };
+}
+
+export function Home({ records, loading, error, status, thumbUrl, filters, onFilters, onOpen, onSettings }: Props) {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [pageBlocked, setPageBlocked] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const tagStrip = useRef<HTMLDivElement>(null);
+  const [tagOverflow, setTagOverflow] = useState({ left: false, right: false });
 
-  // Tell the user up front when the current tab can't be captured.
   useEffect(() => {
     chrome.tabs
       .query({ active: true, lastFocusedWindow: true })
@@ -61,11 +69,8 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
     setMenuOpen(false);
     setCaptureError(null);
     const res = await send<null>({ type: 'START_CAPTURE', mode });
-    if (res.ok) {
-      window.close();
-    } else {
-      setCaptureError(res.error);
-    }
+    if (res.ok) window.close();
+    else setCaptureError(res.error);
   };
 
   const tags = useMemo(() => collectTags(records), [records]);
@@ -73,32 +78,49 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
   const visible = useMemo(() => queryEvidence(records, filters), [records, filters]);
 
   const set = <K extends keyof Filters>(key: K, value: Filters[K]) => onFilters({ ...filters, [key]: value });
+  const hasFilter = Boolean(filters.search || filters.category || filters.domain || filters.tag);
+
   const activeLib = status?.account ? status.libraries.find((l) => l.id === status.activeLibraryId) : undefined;
   const viewOnly = activeLib?.role === 'viewer';
   const captureBlocked = pageBlocked ?? (viewOnly ? `You can only view “${activeLib!.name}”. Switch to a library you can edit to capture.` : null);
-  const hasFilter = Boolean(filters.search || filters.category || filters.domain || filters.tag);
+
+  // ---- tag strip scrolling ----
+  const measureStrip = () => {
+    const el = tagStrip.current;
+    if (!el) return;
+    setTagOverflow({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+  };
+  useEffect(() => {
+    measureStrip();
+    const el = tagStrip.current;
+    if (!el) return;
+    const ro = new ResizeObserver(measureStrip);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tags, filters.tag]);
+  const scrollStrip = (dir: -1 | 1) => tagStrip.current?.scrollBy({ left: dir * 160, behavior: 'smooth' });
+
+  const pill = syncPill(status);
+  const subtitle = status?.account
+    ? `${activeLib?.name ?? 'Choose a library'} · ${records.length} item${records.length === 1 ? '' : 's'}`
+    : `Local only · ${records.length} item${records.length === 1 ? '' : 's'}`;
 
   return (
     <div className="home">
-      <header className="topbar">
-        <div className="brand">
-          <Icon name="frame" size={18} />
-          <span>UX Evidence</span>
-        </div>
-        <span className="count" title="Saved items">
-          {records.length}
+      <Hero title="UX Evidence" subtitle={subtitle}>
+        <span className={`hero-pill ${pill.tone}`} title={status?.lastError ?? undefined}>
+          <i />
+          {pill.label}
         </span>
-      </header>
+        <button type="button" className="hero-circle" aria-label="Settings" title="Settings" onClick={onSettings}>
+          <Icon name="gear" size={17} />
+        </button>
+      </Hero>
 
       <section className="capture">
         <div className="capture-row">
-          <button
-            type="button"
-            className="btn primary capture-btn"
-            onClick={() => capture('element')}
-            disabled={Boolean(captureBlocked)}
-          >
-            <Icon name="plus" size={16} />
+          <button type="button" className="btn primary capture-btn" onClick={() => capture('element')} disabled={Boolean(captureBlocked)}>
+            <Icon name="camera" size={17} />
             Capture Evidence
           </button>
           <button
@@ -114,7 +136,7 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
           {menuOpen && (
             <div className="menu" role="menu">
               <button type="button" role="menuitem" onClick={() => capture('element')}>
-                <Icon name="frame" size={14} />
+                <Icon name="camera" size={14} />
                 <span>
                   Select element or region
                   <small>Hover, click or drag on the page</small>
@@ -171,12 +193,7 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
                 </option>
               ))}
             </select>
-            <select
-              className="select sm"
-              value={filters.domain ?? ''}
-              onChange={(e) => set('domain', e.target.value || null)}
-              aria-label="Filter by website"
-            >
+            <select className="select sm" value={filters.domain ?? ''} onChange={(e) => set('domain', e.target.value || null)} aria-label="Filter by website">
               <option value="">All sites</option>
               {domains.map((d) => (
                 <option key={d} value={d}>
@@ -196,19 +213,29 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
           </div>
         )}
 
-        {(filters.tag || (tags.length > 0 && !hasFilter)) && (
-          <div className="tag-row">
-            {filters.tag ? (
-              <button type="button" className="tag active" onClick={() => set('tag', null)}>
-                {filters.tag} <Icon name="close" size={10} />
-              </button>
-            ) : (
-              tags.slice(0, 8).map((t) => (
-                <button type="button" key={t} className="tag" onClick={() => set('tag', t)}>
-                  {t}
+        {tags.length > 0 && (
+          <div className="tag-strip-wrap">
+            <button type="button" className={`strip-arrow${tagOverflow.left ? '' : ' hidden'}`} aria-label="Scroll tags left" onClick={() => scrollStrip(-1)}>
+              <Icon name="chevronLeft" size={13} />
+            </button>
+            <div className="tag-strip" ref={tagStrip} onScroll={measureStrip}>
+              {filters.tag && (
+                <button type="button" className="tag active" onClick={() => set('tag', null)}>
+                  {filters.tag} <Icon name="close" size={10} />
                 </button>
-              ))
-            )}
+              )}
+              {tags
+                .filter((t) => t !== filters.tag)
+                .map((t) => (
+                  <button type="button" key={t} className="tag" onClick={() => set('tag', t)}>
+                    {t}
+                  </button>
+                ))}
+            </div>
+            {tagOverflow.right && <div className="strip-fade" />}
+            <button type="button" className={`strip-arrow${tagOverflow.right ? '' : ' hidden'}`} aria-label="Scroll tags right" onClick={() => scrollStrip(1)}>
+              <Icon name="chevronRight" size={13} />
+            </button>
           </div>
         )}
       </section>
@@ -234,7 +261,7 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
         {!loading && !error && records.length === 0 && (
           <div className="empty">
             <div className="empty-art">
-              <Icon name="frame" size={28} />
+              <Icon name="camera" size={26} />
             </div>
             <h3>No evidence yet</h3>
             <p>
@@ -254,17 +281,9 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
         )}
 
         {visible.map((record) => (
-          <EvidenceCard
-            key={record.id}
-            record={record}
-            thumbUrl={thumbUrl(record)}
-            onOpen={onOpen}
-            onTag={(t) => set('tag', t)}
-          />
+          <EvidenceCard key={record.id} record={record} thumbUrl={thumbUrl(record)} onOpen={onOpen} onTag={(t) => set('tag', t)} />
         ))}
       </section>
-
-      <AccountPanel status={status} onChanged={onReload} onSync={onSync} />
     </div>
   );
 }

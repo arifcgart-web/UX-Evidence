@@ -3,6 +3,8 @@
  * Keep this file free of browser- or Supabase-specific code.
  */
 
+import type { Shape } from './annotations';
+
 export const CATEGORIES = [
   'Navigation',
   'Hero',
@@ -58,6 +60,8 @@ export interface EvidenceBase extends EvidenceFields, CaptureContext {
   screenshotWidth: number;
   screenshotHeight: number;
   captureMode: CaptureMode;
+  /** Rectangles/arrows drawn over the screenshot (see shared/annotations.ts). */
+  annotations: Shape[];
   createdAt: string;
   updatedAt: string;
 }

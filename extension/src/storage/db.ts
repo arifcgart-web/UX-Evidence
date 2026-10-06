@@ -7,7 +7,7 @@
  */
 
 export const DB_NAME = 'ux-evidence';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const STORE_EVIDENCE = 'evidence';
 export const STORE_META = 'meta';
 
@@ -38,6 +38,21 @@ export function openDB(): Promise<IDBDatabase> {
         store = tx.objectStore(STORE_EVIDENCE);
       }
 
+      if (oldVersion < 3 && oldVersion >= 2) {
+        // v3: annotations. Back-fill [] so renderers never see undefined.
+        const req = store.openCursor();
+        req.onsuccess = () => {
+          const cursor = req.result;
+          if (!cursor) return;
+          const value = cursor.value as Record<string, unknown>;
+          if (!Array.isArray(value.annotations)) {
+            value.annotations = [];
+            cursor.update(value);
+          }
+          cursor.continue();
+        };
+      }
+
       if (oldVersion < 2) {
         // v2: cloud sync. Add the sync indexes and back-fill existing rows.
         if (!store.indexNames.contains(IDX_SYNC)) store.createIndex(IDX_SYNC, 'syncState');
@@ -51,6 +66,7 @@ export function openDB(): Promise<IDBDatabase> {
           const value = cursor.value as Record<string, unknown>;
           if (value.libraryId === undefined) value.libraryId = null;
           if (value.syncState === undefined) value.syncState = 'local';
+          if (!Array.isArray(value.annotations)) value.annotations = [];
           cursor.update(value);
           cursor.continue();
         };

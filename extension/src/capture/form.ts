@@ -8,6 +8,8 @@
 import { CATEGORIES, type Category, type EvidenceFields, isCategory } from '../types/evidence';
 import type { DraftCreated } from '../types/messages';
 import { normalizeTags } from '@shared/search';
+import { openAnnotationEditor } from '@shared/annotationEditor';
+import { overlaySvg, type Shape } from '@shared/annotations';
 
 const MAX_SUGGESTIONS = 8;
 
@@ -62,15 +64,20 @@ function icon(path: string, size = 14): SVGSVGElement {
 const ICON_CLOSE = '<path d="M18 6 6 18M6 6l12 12"/>';
 const ICON_WARN = '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>';
 const ICON_CHEVRON = '<polyline points="9 18 15 12 9 6"/>';
+const ICON_PEN = '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
 
 export interface FormResult {
   action: 'save' | 'cancel';
   fields: EvidenceFields;
+  annotations: Shape[];
 }
 
 export class EvidenceForm {
   private scrim = el('div', 'uxe-scrim');
   private tags: string[] = [];
+  private shapes: Shape[] = [];
+  private previewOverlay!: HTMLDivElement;
+  private annotateBtn!: HTMLButtonElement;
   private resolve!: (r: FormResult) => void;
   private settled = false;
 
@@ -158,7 +165,13 @@ export class EvidenceForm {
     const img = el('img');
     img.src = this.draft.previewUrl;
     img.alt = 'Captured screenshot';
-    preview.append(img, el('span', 'uxe-dim', `${this.draft.previewWidth}×${this.draft.previewHeight}`));
+    this.previewOverlay = el('div', 'uxe-overlay-marks');
+    this.annotateBtn = el('button', 'uxe-annotate');
+    this.annotateBtn.type = 'button';
+    this.annotateBtn.append(icon(ICON_PEN, 13), el('span', undefined, 'Annotate'));
+    this.annotateBtn.addEventListener('click', () => void this.annotate());
+    preview.append(img, this.previewOverlay, el('span', 'uxe-dim', `${this.draft.previewWidth}×${this.draft.previewHeight}`), this.annotateBtn);
+    img.addEventListener('load', () => this.paintMarks());
     body.append(preview);
 
     if (this.draft.clipped) {
@@ -250,6 +263,33 @@ export class EvidenceForm {
     panel.append(head, body, foot);
     this.scrim.append(panel);
     // Clicking the dimmed page area shouldn't lose the form — do nothing.
+  }
+
+  /** Open the full-size editor over the page (75% of the window). */
+  private async annotate() {
+    this.scrim.style.visibility = 'hidden';
+    const result = await openAnnotationEditor({
+      imageUrl: this.draft.previewUrl,
+      shapes: this.shapes,
+      viewportFraction: 0.75,
+      root: this.root,
+      title: 'Annotate screenshot',
+    });
+    this.scrim.style.visibility = '';
+    if (result) this.shapes = result;
+    this.paintMarks();
+    this.observation.focus();
+  }
+
+  private paintMarks() {
+    const img = this.previewOverlay.previousElementSibling as HTMLImageElement | null;
+    if (!img) return;
+    const w = img.clientWidth;
+    const h = img.clientHeight;
+    this.previewOverlay.style.width = `${w}px`;
+    this.previewOverlay.style.height = `${h}px`;
+    this.previewOverlay.innerHTML = overlaySvg(this.shapes, w, h);
+    this.annotateBtn.lastElementChild!.textContent = this.shapes.length ? `Markings (${this.shapes.length})` : 'Annotate';
   }
 
   private field(labelText: string, control: HTMLElement, optional = false): HTMLDivElement {
@@ -366,6 +406,7 @@ export class EvidenceForm {
         notes: this.notes.value,
         tags: this.tags,
       },
+      annotations: this.shapes,
     });
   }
 
@@ -379,6 +420,7 @@ export class EvidenceForm {
         notes: '',
         tags: [],
       },
+      annotations: [],
     });
   }
 }

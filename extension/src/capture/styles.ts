@@ -3,7 +3,11 @@
  * shadow root, so nothing here leaks into the host page and nothing from the
  * host page leaks in. `all: initial` on the host resets inherited properties.
  */
+import { EDITOR_CSS } from '@shared/annotationEditor';
+
 export const OVERLAY_CSS = /* css */ `
+  ${EDITOR_CSS}
+
   :host {
     all: initial;
     position: fixed;
@@ -30,8 +34,8 @@ export const OVERLAY_CSS = /* css */ `
   .uxe-box {
     position: fixed;
     pointer-events: none;
-    border: 2px solid #2563eb;
-    background: rgba(37, 99, 235, 0.08);
+    border: 2px solid #7a5cff;
+    background: rgba(122, 92, 255, 0.10);
     border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(255,255,255,0.6) inset;
     transition: top 40ms linear, left 40ms linear, width 40ms linear, height 40ms linear;
@@ -52,7 +56,7 @@ export const OVERLAY_CSS = /* css */ `
     text-overflow: ellipsis;
     letter-spacing: 0.01em;
   }
-  .uxe-label b { font-weight: 600; color: #93c5fd; }
+  .uxe-label b { font-weight: 600; color: #c4b5ff; }
 
   .uxe-hint {
     position: fixed;
@@ -139,13 +143,20 @@ export const OVERLAY_CSS = /* css */ `
     margin-bottom: 12px;
   }
   .uxe-preview img { display: block; width: 100%; height: auto; max-height: 220px; object-fit: contain; }
+  .uxe-overlay-marks { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .uxe-annotate {
+    position: absolute; left: 6px; bottom: 6px; appearance: none; border: 1px solid #e5e5ea; background: rgba(255,255,255,.95);
+    color: #111113; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .uxe-annotate:hover { border-color: #7a5cff; color: #7a5cff; }
   .uxe-preview .uxe-dim {
     position: absolute; right: 6px; bottom: 6px;
     font-size: 10px; background: rgba(17,17,19,0.75); color: #fff; padding: 2px 6px; border-radius: 4px;
   }
   .uxe-clipped {
     display: flex; gap: 8px; align-items: flex-start;
-    background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa;
+    background: #fff3e3; color: #9a5a00; border: 1px solid #ffa640;
     border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 12px;
   }
 
@@ -163,7 +174,7 @@ export const OVERLAY_CSS = /* css */ `
     transition: border-color 80ms, box-shadow 80ms;
   }
   .uxe-input:focus, .uxe-select:focus, .uxe-textarea:focus, .uxe-tags:focus-within {
-    border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+    border-color: #7a5cff; box-shadow: 0 0 0 3px rgba(122,92,255,0.22);
   }
   .uxe-input.invalid { border-color: #dc2626; }
   .uxe-textarea { resize: vertical; min-height: 60px; }
@@ -180,21 +191,21 @@ export const OVERLAY_CSS = /* css */ `
   }
   .uxe-chip {
     display: inline-flex; align-items: center; gap: 4px;
-    background: #eef2ff; color: #3730a3; font-size: 12px; font-weight: 500;
+    background: #efeaff; color: #4a2fd6; font-size: 12px; font-weight: 500;
     padding: 2px 4px 2px 8px; border-radius: 999px;
   }
   .uxe-chip button {
     appearance: none; border: 0; background: transparent; width: 16px; height: 16px; border-radius: 50%;
-    display: grid; place-items: center; cursor: pointer; color: #6366f1; font-size: 12px; line-height: 1;
+    display: grid; place-items: center; cursor: pointer; color: #7a5cff; font-size: 12px; line-height: 1;
   }
-  .uxe-chip button:hover { background: #c7d2fe; color: #1e1b4b; }
+  .uxe-chip button:hover { background: #d9cfff; color: #4a2fd6; }
   .uxe-tags input { flex: 1; min-width: 80px; border: 0; outline: 0; padding: 3px 2px; background: transparent; }
   .uxe-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .uxe-suggest button {
     appearance: none; border: 1px dashed #d9d9df; background: #fff; color: #6b6b73;
     font-size: 11px; padding: 2px 8px; border-radius: 999px; cursor: pointer;
   }
-  .uxe-suggest button:hover { border-color: #2563eb; color: #2563eb; }
+  .uxe-suggest button:hover { border-color: #7a5cff; color: #7a5cff; }
 
   .uxe-toggle {
     appearance: none; border: 0; background: transparent; padding: 0; cursor: pointer;
@@ -211,8 +222,8 @@ export const OVERLAY_CSS = /* css */ `
     appearance: none; border: 1px solid transparent; border-radius: 7px; padding: 8px 14px;
     font-weight: 500; cursor: pointer; transition: background 80ms;
   }
-  .uxe-btn.primary { background: #111113; color: #fff; }
-  .uxe-btn.primary:hover { background: #2a2a2e; }
+  .uxe-btn.primary { background: #7a5cff; color: #fff; }
+  .uxe-btn.primary:hover { background: #6a4cf0; }
   .uxe-btn.primary:disabled { opacity: 0.6; cursor: default; }
   .uxe-btn.ghost { background: transparent; border-color: #d9d9df; color: #3f3f46; }
   .uxe-btn.ghost:hover { background: #f3f3f5; }

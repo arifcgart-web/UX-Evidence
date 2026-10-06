@@ -24,6 +24,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: fileURLToPath(new URL('popup.html', import.meta.url)),
+        annotate: fileURLToPath(new URL('annotate.html', import.meta.url)),
         background: fileURLToPath(new URL('src/background/service-worker.ts', import.meta.url)),
       },
       output: {

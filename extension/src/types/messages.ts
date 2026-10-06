@@ -4,6 +4,7 @@
  */
 
 import type { CaptureContext, CaptureMode, EvidenceFields } from './evidence';
+import type { Shape } from '@shared/annotations';
 
 export interface Rect {
   x: number;
@@ -47,6 +48,7 @@ export interface SaveEvidenceMsg {
   type: 'SAVE_EVIDENCE';
   draftId: string;
   fields: EvidenceFields;
+  annotations?: Shape[];
 }
 
 /** content -> worker: the user cancelled the form; drop the draft. */

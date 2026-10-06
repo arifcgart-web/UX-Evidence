@@ -50,7 +50,7 @@ function init() {
     node.setAttribute('role', 'status');
     node.innerHTML =
       kind === 'ok'
-        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
         : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>';
     node.append(document.createTextNode(message));
     root.append(node);
@@ -87,6 +87,7 @@ function init() {
         type: 'SAVE_EVIDENCE',
         draftId: draft.data.draftId,
         fields: result.fields,
+        annotations: result.annotations,
       });
       if (saved.ok) {
         toast('Evidence saved.');

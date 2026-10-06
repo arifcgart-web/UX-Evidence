@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EvidenceFields, EvidenceRecord } from '../../types/evidence';
-import { fullDate } from '@shared/format';
 import { Icon } from '../components/Icon';
+import { AnnotatedImage } from '../components/AnnotatedImage';
 import { EvidenceEditForm } from '../components/EvidenceEditForm';
 import { getEvidence } from '../../storage/evidenceStore';
 import { send } from '../messaging';
@@ -33,6 +33,8 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
   const [copied, setCopied] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
+  const [showMarks, setShowMarks] = useState(true);
+  const hasMarks = (record.annotations ?? []).length > 0;
 
   // Items pulled from the cloud arrive with a thumbnail only; fetch the full image once.
   useEffect(() => {
@@ -61,6 +63,7 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
   }, [editing, onBack]);
 
   const openSource = () => void chrome.tabs.create({ url: record.url });
+  const openAnnotate = () => void chrome.tabs.create({ url: chrome.runtime.getURL(`annotate.html?id=${record.id}`) });
 
   const openFullSize = async () => {
     // Data URLs survive the popup closing; blob URLs don't.
@@ -123,24 +126,31 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
         {!editing && canEdit && (
           <div className="topbar-actions">
             <button type="button" className="iconbtn" title="Edit" aria-label="Edit" onClick={() => setEditing(true)}>
-              <Icon name="edit" size={16} />
+              <Icon name="edit" size={20} />
             </button>
             <button type="button" className="iconbtn danger" title="Delete" aria-label="Delete" onClick={() => setConfirmDelete(true)}>
-              <Icon name="trash" size={16} />
+              <Icon name="trash" size={20} />
             </button>
           </div>
         )}
       </header>
 
       <div className="detail-body">
-        <button type="button" className="shot" onClick={openFullSize} title="Open full size">
-          <img src={imageUrl} alt={record.observation} />
-          <span className="shot-dim">
-            <Icon name="expand" size={11} /> {record.screenshotWidth}×{record.screenshotHeight}
-            {!record.screenshot && (fetching ? ' · loading full size…' : ' · preview')}
-          </span>
-          {record.syncState === 'pending' && <span className="shot-sync">waiting to upload</span>}
-        </button>
+        <div className="shot-wrap">
+          <button type="button" className="shot" onClick={openFullSize} title="Open full size">
+            <AnnotatedImage src={imageUrl} alt={record.observation} shapes={record.annotations ?? []} hidden={!showMarks} />
+            <span className="shot-dim">
+              <Icon name="expand" size={11} /> {record.screenshotWidth}×{record.screenshotHeight}
+              {!record.screenshot && (fetching ? ' · loading full size…' : ' · preview')}
+            </span>
+            {record.syncState === 'pending' && <span className="shot-sync">waiting to upload</span>}
+          </button>
+          {hasMarks && (
+            <button type="button" className={`marks-toggle${showMarks ? '' : ' off'}`} onClick={() => setShowMarks((v) => !v)}>
+              <Icon name={showMarks ? 'eye' : 'eyeOff'} size={12} /> {showMarks ? 'Markings on' : 'Markings off'}
+            </button>
+          )}
+        </div>
 
         {actionError && (
           <div className="notice error">
@@ -207,20 +217,27 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
                 <dd className="url" title={record.url}>
                   {record.url}
                 </dd>
-                <dt>Captured</dt>
+                <dt>Viewport</dt>
                 <dd className="wrap">
-                  {fullDate(record.createdAt)} · {record.viewport.width}×{record.viewport.height} viewport
+                  {record.viewport.width}×{record.viewport.height}
                   {record.pageType ? ` · ${record.pageType}` : ''}
                 </dd>
               </dl>
             </section>
 
+            {canEdit && (
+              <div className="detail-actions one">
+                <button type="button" className="btn ghost" onClick={openAnnotate}>
+                  <Icon name="pen" size={18} /> {hasMarks ? 'Edit markings' : 'Annotate'}
+                </button>
+              </div>
+            )}
             <div className="detail-actions">
               <button type="button" className="btn ghost" onClick={openSource}>
-                <Icon name="external" size={14} /> Open source page
+                <Icon name="external" size={18} /> Open source page
               </button>
               <button type="button" className="btn ghost" onClick={copyUrl}>
-                <Icon name={copied ? 'check' : 'copy'} size={14} /> {copied ? 'Copied' : 'Copy URL'}
+                <Icon name={copied ? 'check' : 'copy'} size={18} /> {copied ? 'Copied' : 'Copy URL'}
               </button>
             </div>
           </>
