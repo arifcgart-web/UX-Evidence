@@ -115,6 +115,23 @@ export async function adoptSession(accessToken: string, refreshToken: string): P
   await afterSignIn();
 }
 
+/**
+ * Sign in with a one-time token created for us by the web app's
+ * `extension-session` Edge Function. Gives the extension its own session,
+ * independent of the web app's, so neither logs the other out.
+ */
+export async function adoptTokenHash(tokenHash: string): Promise<void> {
+  const auth = (await cloud()).auth;
+  // Drop any session we had (possibly a shared one from an older hand-over), locally only.
+  await auth.signOut({ scope: 'local' }).catch(() => undefined);
+  let { error } = await auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' });
+  if (error && /expired|invalid/i.test(error.message)) {
+    ({ error } = await auth.verifyOtp({ token_hash: tokenHash, type: 'email' }));
+  }
+  if (error) throw new Error(error.message);
+  await afterSignIn();
+}
+
 async function afterSignIn(): Promise<void> {
   await refreshLibraries();
 
@@ -163,7 +180,8 @@ export function extractTokenHash(raw: string): string | null {
 }
 
 export async function signOut(): Promise<void> {
-  await (await cloud()).auth.signOut().catch(() => undefined);
+  // 'local' so signing the extension out doesn't sign the web app out too.
+  await (await cloud()).auth.signOut({ scope: 'local' }).catch(() => undefined);
   await metaDelete(META_ACTIVE_LIBRARY);
   await metaDelete(META_LIBRARIES);
   await metaDelete(META_LAST_SYNC);

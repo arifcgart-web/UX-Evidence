@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 import { Icon } from '../components/Icon';
 
 declare global {
@@ -30,7 +31,13 @@ export function ExtensionPage() {
 
   const canHandover = Boolean(window.chrome?.runtime?.sendMessage);
 
-  const connect = () => {
+  /**
+   * Ask our Edge Function for a one-time sign-in token and hand it to the
+   * extension, which turns it into its own session. (Handing over this tab's
+   * tokens instead would make the two share one session, and the first token
+   * refresh on either side would sign both out.)
+   */
+  const connect = async () => {
     if (!session || !extId.trim()) return;
     const runtime = window.chrome?.runtime;
     if (!runtime?.sendMessage) {
@@ -40,6 +47,22 @@ export function ExtensionPage() {
     }
     setState('busy');
     setMessage(null);
+
+    let tokenHash: string;
+    try {
+      const { data, error } = await supabase().functions.invoke<{ token_hash?: string; error?: string }>('extension-session', {
+        method: 'POST',
+      });
+      if (error || !data?.token_hash) throw new Error(data?.error ?? error?.message ?? 'No token');
+      tokenHash = data.token_hash;
+    } catch {
+      setState('error');
+      setMessage(
+        "Couldn't create a sign-in for the extension. One-time setup: deploy the \"extension-session\" Edge Function in Supabase (see the update guide), then try again.",
+      );
+      return;
+    }
+
     try {
       runtime.sendMessage(
         extId.trim(),
@@ -47,8 +70,7 @@ export function ExtensionPage() {
           type: 'UXE_HANDOVER',
           supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
           anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          accessToken: session.access_token,
-          refreshToken: session.refresh_token,
+          tokenHash,
         },
         (response) => {
           const err = runtime.lastError?.message;
@@ -92,7 +114,7 @@ export function ExtensionPage() {
             onChange={(e) => setExtId(e.target.value)}
             spellCheck={false}
           />
-          <button type="button" className="btn primary" onClick={connect} disabled={!extId.trim() || state === 'busy' || !user}>
+          <button type="button" className="btn primary" onClick={() => void connect()} disabled={!extId.trim() || state === 'busy' || !user}>
             {state === 'busy' ? 'Connecting…' : 'Connect'}
           </button>
         </div>

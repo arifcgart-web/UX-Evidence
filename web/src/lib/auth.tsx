@@ -39,7 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) throw new Error(error.message);
       },
       signOut: async () => {
-        await supabase().auth.signOut();
+        // 'local' signs out this browser only; the default ('global') would
+        // also sign the Chrome extension out.
+        await supabase().auth.signOut({ scope: 'local' });
       },
     }),
     [session, loading],

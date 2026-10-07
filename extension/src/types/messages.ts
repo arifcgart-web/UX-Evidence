@@ -93,6 +93,8 @@ export interface RefreshLibrariesMsg {
 /** content -> worker: switch this tab to a phone-sized view (chrome.debugger emulation). */
 export interface MobileEnterMsg {
   type: 'MOBILE_ENTER';
+  /** window.outerWidth - window.innerWidth, so the window fallback can size the page area. */
+  chromeWidth: number;
 }
 /** content -> worker: leave the phone-sized view. */
 export interface MobileExitMsg {

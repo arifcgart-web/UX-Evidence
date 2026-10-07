@@ -129,12 +129,22 @@ function init() {
    */
   async function captureMobile(draftId: string): Promise<ViewPreview | { error: string } | null> {
     const desktopWidth = window.innerWidth;
-    const entered = await send<{ width: number; height: number }>({ type: 'MOBILE_ENTER' });
+    const entered = await send<{ width: number; height: number; mode: 'emulate' | 'window' }>({
+      type: 'MOBILE_ENTER',
+      chromeWidth: Math.max(0, window.outerWidth - window.innerWidth),
+    });
     if (!entered.ok) return { error: entered.error };
 
     try {
-      await waitForWidth((w) => w <= entered.data.width + 1);
-      const selector = new ElementSelector(root, host, { title: 'Mobile view · select the same section', wholeScreen: true });
+      if (entered.data.mode === 'emulate') await waitForWidth((w) => w <= entered.data.width + 1);
+      else await waitForWidth((w) => w < desktopWidth - 50);
+      // Let responsive layouts settle after the resize.
+      await new Promise((r) => setTimeout(r, 250));
+      const title =
+        entered.data.mode === 'emulate'
+          ? 'Mobile view · select the same section'
+          : `Narrow window (${window.innerWidth}px) · select the same section`;
+      const selector = new ElementSelector(root, host, { title, wholeScreen: true });
       const selection = await selector.start();
       if (!selection) return null;
 
@@ -152,7 +162,7 @@ function init() {
     } finally {
       host.style.display = '';
       await send({ type: 'MOBILE_EXIT' });
-      await waitForWidth((w) => w >= desktopWidth - 1);
+      await waitForWidth((w) => w >= desktopWidth - 20);
     }
   }
 

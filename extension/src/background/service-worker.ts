@@ -28,6 +28,7 @@ import { friendlyError, restrictionReason } from '../utils/restrictedPages';
 import {
   addCategory,
   adoptSession,
+  adoptTokenHash,
   fetchScreenshot,
   getCategories,
   getStatus,
@@ -223,7 +224,7 @@ async function handle(
       const tabId = sender.tab?.id;
       if (tabId === undefined) return fail('No tab to switch.');
       try {
-        return ok(await enterMobile(tabId));
+        return ok(await enterMobile(tabId, sender.tab?.windowId, message.chromeWidth ?? 16));
       } catch (error) {
         await exitMobile(tabId);
         return fail(error instanceof Error ? error.message : "Couldn't switch to a mobile view.");
@@ -299,8 +300,11 @@ interface HandoverMessage {
   type: 'UXE_HANDOVER';
   supabaseUrl: string;
   anonKey: string;
-  accessToken: string;
-  refreshToken: string;
+  /** Preferred: one-time token the extension exchanges for its own session. */
+  tokenHash?: string;
+  /** Legacy (older web app builds): the web app's own tokens. */
+  accessToken?: string;
+  refreshToken?: string;
 }
 
 chrome.runtime.onMessageExternal.addListener(
@@ -310,7 +314,9 @@ chrome.runtime.onMessageExternal.addListener(
       if (!sender.origin || !/^https:\/\//.test(sender.origin)) return fail('Untrusted origin');
       try {
         await setConfig({ url: message.supabaseUrl, anonKey: message.anonKey });
-        await adoptSession(message.accessToken, message.refreshToken);
+        if (message.tokenHash) await adoptTokenHash(message.tokenHash);
+        else if (message.accessToken && message.refreshToken) await adoptSession(message.accessToken, message.refreshToken);
+        else return fail('Nothing to sign in with. Update the web app and try again.');
         chrome.alarms.create(SYNC_ALARM, { periodInMinutes: 15 });
         return ok(await getStatus());
       } catch (error) {
