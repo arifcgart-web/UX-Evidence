@@ -464,6 +464,7 @@ function DetailDrawer({ item, screenshotUrl: desktopUrl, mobileUrl, editable, kn
   const [showMarks, setShowMarks] = useState(true);
   const [zoom, setZoom] = useState(false);
   const [view, setView] = useState<'desktop' | 'mobile'>('desktop');
+  const [mobileTip, setMobileTip] = useState(false);
   const isMobile = view === 'mobile' && !!item.mobile;
   const screenshotUrl = isMobile ? mobileUrl : desktopUrl;
   const shapes = (isMobile ? item.mobile?.annotations : item.annotations) ?? [];
@@ -479,6 +480,7 @@ function DetailDrawer({ item, screenshotUrl: desktopUrl, mobileUrl, editable, kn
     setZoom(false);
     setView('desktop');
     setShowDetails(false);
+    setMobileTip(false);
   }, [item.id]);
 
   useEffect(() => {
@@ -537,15 +539,33 @@ function DetailDrawer({ item, screenshotUrl: desktopUrl, mobileUrl, editable, kn
         </header>
 
         <div className="drawer-body">
-          {item.mobile && (
+          {(item.mobile || editable) && (
             <div className="view-tabs" role="tablist" aria-label="Screenshot view">
               <button type="button" role="tab" aria-selected={!isMobile} className={!isMobile ? 'on' : ''} onClick={() => setView('desktop')}>
                 <Icon name="monitor" size={14} /> Desktop
               </button>
-              <button type="button" role="tab" aria-selected={isMobile} className={isMobile ? 'on' : ''} onClick={() => setView('mobile')}>
-                <Icon name="phone" size={14} /> Mobile
-              </button>
+              {item.mobile ? (
+                <button type="button" role="tab" aria-selected={isMobile} className={isMobile ? 'on' : ''} onClick={() => setView('mobile')}>
+                  <Icon name="phone" size={14} /> Mobile
+                </button>
+              ) : (
+                <button type="button" className={`add${mobileTip ? ' on' : ''}`} onClick={() => setMobileTip((v) => !v)}>
+                  <Icon name="plus" size={14} /> Add mobile view
+                </button>
+              )}
             </div>
+          )}
+          {mobileTip && !item.mobile && (
+            <p className="mobile-tip">
+              <Icon name="phone" size={14} />
+              <span>
+                Mobile views are captured with the Chrome extension: open the page, click the UX Evidence icon, open this item and choose{' '}
+                <b>Add mobile view</b>.{' '}
+                <a href={item.url} target="_blank" rel="noreferrer">
+                  Open page
+                </a>
+              </span>
+            </p>
           )}
           {screenshotUrl ? (
             <div className={`shot-wrap${isMobile ? ' is-mobile' : ''}`}>

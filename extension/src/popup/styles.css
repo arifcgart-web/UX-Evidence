@@ -1155,3 +1155,65 @@ kbd {
   margin-left: auto;
   color: var(--accent, #7a5cff);
 }
+
+.detail-actions + .detail-actions {
+  margin-top: 8px;
+}
+.btn.danger-text {
+  flex: 0 0 auto !important;
+  color: var(--danger, #dc2626);
+}
+.notice.mobile-hint {
+  margin: 0 0 8px;
+  background: var(--accent-soft, #efeaff);
+  color: var(--text);
+  align-items: flex-start;
+}
+.linkbtn {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent, #7a5cff);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.view-tabs button.add {
+  color: var(--accent);
+}
+.view-tabs button.add:hover {
+  background: var(--accent-soft, #efeaff);
+}
+.shot-tools {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 4px;
+}
+.shot-tools button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text);
+  cursor: pointer;
+}
+.shot-tools button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.shot-tools button.danger:hover {
+  border-color: #dc2626;
+  color: #dc2626;
+}

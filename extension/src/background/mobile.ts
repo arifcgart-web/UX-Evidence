@@ -157,6 +157,6 @@ export async function captureMobile(
   return { previewUrl: processed.previewUrl, previewWidth: processed.previewWidth, previewHeight: processed.previewHeight };
 }
 
-export async function removeMobile(draftId: string): Promise<void> {
-  await detachMobile(draftId);
+export async function removeMobile(id: string): Promise<void> {
+  await detachMobile(id);
 }

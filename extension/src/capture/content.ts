@@ -166,6 +166,20 @@ function init() {
     }
   }
 
+  /** "Add mobile view" for an item that's already saved (started from the popup). */
+  async function addMobileToSaved(evidenceId: string) {
+    if (active) return;
+    active = true;
+    try {
+      const result = await captureMobile(evidenceId);
+      if (!result) return;
+      if ('error' in result) toast(result.error, 'error');
+      else toast('Mobile view added. Open the extension to add markings.');
+    } finally {
+      active = false;
+    }
+  }
+
   async function enterCaptureMode() {
     if (active) return;
     active = true;
@@ -195,6 +209,9 @@ function init() {
       sendResponse({ ok: true, data: null });
     } else if (message.type === 'CAPTURE_VISIBLE') {
       void captureVisible();
+      sendResponse({ ok: true, data: null });
+    } else if (message.type === 'ADD_MOBILE') {
+      void addMobileToSaved(message.evidenceId);
       sendResponse({ ok: true, data: null });
     }
     return false;

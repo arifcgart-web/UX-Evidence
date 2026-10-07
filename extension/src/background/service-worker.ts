@@ -17,6 +17,7 @@ import {
   commitDraft,
   createDraft,
   deleteEvidence,
+  getEvidence,
   listEvidence,
   newId,
   sweepStaleDrafts,
@@ -241,15 +242,34 @@ async function handle(
       const tabId = sender.tab?.id;
       if (tabId === undefined) return fail('No tab to capture.');
       try {
-        return ok(await captureMobile(tabId, message.draftId, message.rect, message.viewport));
+        const preview = await captureMobile(tabId, message.draftId, message.rect, message.viewport);
+        // Added to an item that's already in the library → upload it now.
+        const rec = await getEvidence(message.draftId);
+        if (rec?.status === 'saved') void syncNow();
+        return ok(preview);
       } catch (error) {
         return fail(error instanceof Error ? error.message : "The mobile view couldn't be captured.");
       }
     }
 
-    case 'MOBILE_REMOVE':
+    case 'MOBILE_REMOVE': {
       await removeMobile(message.draftId);
+      const rec = await getEvidence(message.draftId);
+      if (rec?.status === 'saved') void syncNow();
       return ok(null);
+    }
+
+    case 'START_MOBILE_FOR':
+      try {
+        const tab = await getActiveTab();
+        const reason = restrictionReason(tab.url);
+        if (reason) return fail(reason);
+        await ensureContentScript(tab.id!);
+        await chrome.tabs.sendMessage(tab.id!, { type: 'ADD_MOBILE', evidenceId: message.evidenceId } satisfies ExtensionMessage);
+        return ok(null);
+      } catch (error) {
+        return fail(friendlyError(error));
+      }
 
     case 'ADD_CATEGORY':
       try {
@@ -268,6 +288,7 @@ async function handle(
     // Worker -> content messages never arrive here; listed for exhaustiveness.
     case 'ENTER_CAPTURE_MODE':
     case 'CAPTURE_VISIBLE':
+    case 'ADD_MOBILE':
       return fail('Unexpected message direction.');
   }
 }

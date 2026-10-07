@@ -71,6 +71,46 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
   }, [editing, onBack]);
 
   const openSource = () => void chrome.tabs.create({ url: record.url });
+
+  // --- Mobile view for an already-saved item -----------------------------
+  const [mobileHint, setMobileHint] = useState(false);
+  useEffect(() => setMobileHint(false), [record.id]);
+
+  /** Same page ignoring #hash, query order and a trailing slash. */
+  const samePage = (a: string | undefined, b: string) => {
+    try {
+      const x = new URL(a ?? '');
+      const y = new URL(b);
+      const path = (u: URL) => u.pathname.replace(/\/+$/, '') || '/';
+      return x.origin === y.origin && path(x) === path(y);
+    } catch {
+      return false;
+    }
+  };
+
+  const addMobile = async () => {
+    setActionError(null);
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!samePage(tab?.url, record.url)) {
+      setMobileHint(true);
+      return;
+    }
+    const res = await send<null>({ type: 'START_MOBILE_FOR', evidenceId: record.id });
+    if (res.ok) window.close();
+    else setActionError(res.error);
+  };
+
+  const removeMobile = async () => {
+    setActionError(null);
+    const res = await send<null>({ type: 'MOBILE_REMOVE', draftId: record.id });
+    if (!res.ok) {
+      setActionError(res.error);
+      return;
+    }
+    const fresh = await getEvidence(record.id);
+    if (fresh) onReplace(fresh);
+    setView('desktop');
+  };
   const openAnnotate = () =>
     void chrome.tabs.create({ url: chrome.runtime.getURL(`annotate.html?id=${record.id}${isMobile ? '&view=mobile' : ''}`) });
 
@@ -145,14 +185,31 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
       </header>
 
       <div className="detail-body">
-        {record.mobile && (
+        {(record.mobile || canEdit) && (
           <div className="view-tabs" role="tablist" aria-label="Screenshot view">
             <button type="button" role="tab" aria-selected={!isMobile} className={!isMobile ? 'on' : ''} onClick={() => setView('desktop')}>
               <Icon name="monitor" size={14} /> Desktop
             </button>
-            <button type="button" role="tab" aria-selected={isMobile} className={isMobile ? 'on' : ''} onClick={() => setView('mobile')}>
-              <Icon name="phone" size={14} /> Mobile
-            </button>
+            {record.mobile ? (
+              <button type="button" role="tab" aria-selected={isMobile} className={isMobile ? 'on' : ''} onClick={() => setView('mobile')}>
+                <Icon name="phone" size={14} /> Mobile
+              </button>
+            ) : (
+              <button type="button" className="add" onClick={() => void addMobile()}>
+                <Icon name="plus" size={14} /> Add mobile view
+              </button>
+            )}
+          </div>
+        )}
+        {mobileHint && (
+          <div className="notice mobile-hint">
+            <Icon name="phone" size={14} />
+            <span>
+              Open this page first, then click the UX Evidence icon, open this item and choose <b>Add mobile view</b>.{' '}
+              <button type="button" className="linkbtn" onClick={openSource}>
+                Open page
+              </button>
+            </span>
           </div>
         )}
         <div className="shot-wrap">
@@ -161,6 +218,16 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
             {!fullBlob && fetching && <span className="shot-dim">loading full size…</span>}
             {record.syncState === 'pending' && <span className="shot-sync">waiting to upload</span>}
           </button>
+          {isMobile && canEdit && (
+            <div className="shot-tools">
+              <button type="button" onClick={() => void addMobile()} title="Capture the mobile view again">
+                <Icon name="refresh" size={12} /> Retake
+              </button>
+              <button type="button" className="danger" onClick={() => void removeMobile()} title="Remove the mobile view" aria-label="Remove mobile view">
+                <Icon name="trash" size={12} />
+              </button>
+            </div>
+          )}
           {hasMarks && (
             <button type="button" className={`marks-toggle${showMarks ? '' : ' off'}`} onClick={() => setShowMarks((v) => !v)}>
               <Icon name={showMarks ? 'eye' : 'eyeOff'} size={12} /> {showMarks ? 'Markings on' : 'Markings off'}

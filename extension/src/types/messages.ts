@@ -107,10 +107,20 @@ export interface MobileCaptureMsg {
   rect: Rect | null;
   viewport: { width: number; height: number };
 }
-/** content -> worker: drop the mobile view from a draft. */
+/** content/popup -> worker: drop the mobile view from a draft or saved item. */
 export interface MobileRemoveMsg {
   type: 'MOBILE_REMOVE';
   draftId: string;
+}
+/** popup -> worker: add (or retake) the mobile view of a saved item on the active tab. */
+export interface StartMobileForMsg {
+  type: 'START_MOBILE_FOR';
+  evidenceId: string;
+}
+/** worker -> content: run the mobile capture for a saved item. */
+export interface AddMobileMsg {
+  type: 'ADD_MOBILE';
+  evidenceId: string;
 }
 /** any -> worker: add a custom category to the active library (or the local list). Returns the custom list. */
 export interface AddCategoryMsg {
@@ -152,6 +162,8 @@ export type ExtensionMessage =
   | MobileExitMsg
   | MobileCaptureMsg
   | MobileRemoveMsg
+  | StartMobileForMsg
+  | AddMobileMsg
   | FetchScreenshotMsg
   | SetCloudConfigMsg
   | LocalChangedMsg;
