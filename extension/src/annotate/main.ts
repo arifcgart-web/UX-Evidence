@@ -43,7 +43,9 @@ async function closeTab() {
 }
 
 (async () => {
-  const id = new URLSearchParams(location.search).get('id');
+  const params = new URLSearchParams(location.search);
+  const id = params.get('id');
+  const view: 'desktop' | 'mobile' = params.get('view') === 'mobile' ? 'mobile' : 'desktop';
   if (!id) {
     message('Nothing to annotate', 'Open an item in the extension and choose Annotate.');
     return;
@@ -55,25 +57,30 @@ async function closeTab() {
     message('Item not found', 'It may have been deleted.');
     return;
   }
-  if (!record.screenshot) {
-    const res = await send<boolean>({ type: 'FETCH_SCREENSHOT', id });
+  const isMobile = view === 'mobile' && !!record.mobile;
+  if (isMobile ? !record.mobileScreenshot : !record.screenshot) {
+    const res = await send<boolean>({ type: 'FETCH_SCREENSHOT', id, view: isMobile ? 'mobile' : 'desktop' });
     if (res.ok) record = (await getEvidence(id)) ?? record;
   }
-  const blob = record.screenshot ?? record.thumbnail;
+  const blob = isMobile ? record.mobileScreenshot ?? record.mobileThumbnail : record.screenshot ?? record.thumbnail;
+  if (!blob) {
+    message('Screenshot unavailable', 'Sync and try again.');
+    return;
+  }
   const url = URL.createObjectURL(blob);
   root.innerHTML = '';
 
   const result = await openAnnotationEditor({
     imageUrl: url,
-    shapes: record.annotations ?? [],
+    shapes: (isMobile ? record.mobile?.annotations : record.annotations) ?? [],
     viewportFraction: 0.9,
     root,
-    title: `Annotate · ${record.domain}`,
+    title: `Annotate${isMobile ? ' mobile' : ''} · ${record.domain}`,
   });
   URL.revokeObjectURL(url);
 
   if (result) {
-    await setAnnotations(id, result);
+    await setAnnotations(id, result, isMobile ? 'mobile' : 'desktop');
     await send({ type: 'LOCAL_CHANGED' });
     message('Saved', 'You can close this tab.');
     setTimeout(closeTab, 400);

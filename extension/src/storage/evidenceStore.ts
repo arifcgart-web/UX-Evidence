@@ -86,11 +86,17 @@ function applyFields(existing: EvidenceRecord, fields: EvidenceFields): Evidence
 }
 
 /** Turn a draft into a library item. Returns null if the draft vanished. */
-export async function commitDraft(draftId: string, fields: EvidenceFields, annotations?: Shape[]): Promise<EvidenceRecord | null> {
+export async function commitDraft(
+  draftId: string,
+  fields: EvidenceFields,
+  annotations?: Shape[],
+  mobileAnnotations?: Shape[],
+): Promise<EvidenceRecord | null> {
   return withStore(STORE_EVIDENCE, 'readwrite', async (store) => {
     const existing = await idb.get<EvidenceRecord>(store, draftId);
     if (!existing) return null;
-    const next = { ...applyFields(existing, fields), status: 'saved' as const, annotations: annotations ?? existing.annotations ?? [] };
+    const mobile = existing.mobile ? { ...existing.mobile, annotations: mobileAnnotations ?? existing.mobile.annotations ?? [] } : null;
+    const next = { ...applyFields(existing, fields), status: 'saved' as const, annotations: annotations ?? existing.annotations ?? [], mobile };
     await idb.put(store, next);
     return next;
   });
@@ -106,14 +112,45 @@ export async function updateEvidence(id: string, fields: EvidenceFields): Promis
   });
 }
 
-/** Replace the annotation shapes; marks the item pending for sync. */
-export async function setAnnotations(id: string, annotations: Shape[]): Promise<EvidenceRecord | null> {
+/** Attach (or replace) the mobile version on a draft or saved item. */
+export async function attachMobile(
+  id: string,
+  input: { screenshot: Blob; thumbnail: Blob; width: number; height: number; viewport: { width: number; height: number } },
+): Promise<EvidenceRecord | null> {
   return withStore(STORE_EVIDENCE, 'readwrite', async (store) => {
     const existing = await idb.get<EvidenceRecord>(store, id);
     if (!existing) return null;
     const next: EvidenceRecord = {
       ...existing,
-      annotations,
+      mobileScreenshot: input.screenshot,
+      mobileThumbnail: input.thumbnail,
+      mobile: { width: input.width, height: input.height, viewport: input.viewport, annotations: [] },
+      updatedAt: new Date().toISOString(),
+      syncState: existing.libraryId ? 'pending' : 'local',
+    };
+    await idb.put(store, next);
+    return next;
+  });
+}
+
+/** Remove the mobile version from a draft (e.g. the user discarded it). */
+export async function detachMobile(id: string): Promise<void> {
+  await withStore(STORE_EVIDENCE, 'readwrite', async (store) => {
+    const existing = await idb.get<EvidenceRecord>(store, id);
+    if (!existing) return;
+    await idb.put(store, { ...existing, mobile: null, mobileScreenshot: null, mobileThumbnail: null } satisfies EvidenceRecord);
+  });
+}
+
+/** Replace the annotation shapes; marks the item pending for sync. */
+export async function setAnnotations(id: string, annotations: Shape[], view: 'desktop' | 'mobile' = 'desktop'): Promise<EvidenceRecord | null> {
+  return withStore(STORE_EVIDENCE, 'readwrite', async (store) => {
+    const existing = await idb.get<EvidenceRecord>(store, id);
+    if (!existing) return null;
+    if (view === 'mobile' && !existing.mobile) return existing;
+    const next: EvidenceRecord = {
+      ...existing,
+      ...(view === 'mobile' ? { mobile: { ...existing.mobile!, annotations } } : { annotations }),
       updatedAt: new Date().toISOString(),
       syncState: existing.libraryId ? 'pending' : 'local',
     };
@@ -229,6 +266,8 @@ export async function applyRemote(remote: Omit<EvidenceRecord, 'screenshot'> & {
     await idb.put(store, {
       ...remote,
       screenshot: remote.screenshot ?? existing?.screenshot ?? null,
+      mobileScreenshot: remote.mobile ? remote.mobileScreenshot ?? existing?.mobileScreenshot ?? null : null,
+      mobileThumbnail: remote.mobile ? remote.mobileThumbnail ?? existing?.mobileThumbnail ?? null : null,
       syncState: 'synced',
       status: 'saved',
       searchText: buildSearchText(remote),
@@ -237,11 +276,12 @@ export async function applyRemote(remote: Omit<EvidenceRecord, 'screenshot'> & {
   });
 }
 
-export async function attachScreenshot(id: string, screenshot: Blob): Promise<void> {
+export async function attachScreenshot(id: string, screenshot: Blob, view: 'desktop' | 'mobile' = 'desktop'): Promise<void> {
   await withStore(STORE_EVIDENCE, 'readwrite', async (store) => {
     const existing = await idb.get<EvidenceRecord>(store, id);
     if (!existing) return;
-    await idb.put(store, { ...existing, screenshot } satisfies EvidenceRecord);
+    const patch = view === 'mobile' ? { mobileScreenshot: screenshot } : { screenshot };
+    await idb.put(store, { ...existing, ...patch } satisfies EvidenceRecord);
   });
 }
 

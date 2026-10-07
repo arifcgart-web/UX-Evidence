@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BACKGROUNDS, useBackground } from '../lib/background';
 import { Icon } from './Icon';
 
-/** Small icon in the bottom-left corner; opens a popover of backgrounds. */
+/** Small icon in the bottom-right gutter (outside the app panel); opens a popover of backgrounds. */
 export function BackgroundPicker() {
   const bg = useBackground();
   const [open, setOpen] = useState(false);
@@ -71,7 +71,7 @@ export function BackgroundPicker() {
         </div>
       )}
       <button type="button" className="bg-btn" aria-label="Change background" title="Change background" onClick={() => setOpen((o) => !o)}>
-        <Icon name="image" size={18} />
+        <Icon name="image" size={16} />
       </button>
     </div>
   );

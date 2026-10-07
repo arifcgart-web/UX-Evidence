@@ -4,7 +4,6 @@
   "version": "0.2.0",
   "description": "Capture UX patterns from any website, note why they matter, and build a searchable evidence library.",
   "minimum_chrome_version": "109",
-
   "action": {
     "default_popup": "popup.html",
     "default_title": "UX Evidence Collector",
@@ -15,19 +14,16 @@
       "128": "icons/icon128.png"
     }
   },
-
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-
   "commands": {
     "start-capture": {
       "suggested_key": {
@@ -37,10 +33,17 @@
       "description": "Capture the visible area of the page"
     }
   },
-
-  "permissions": ["activeTab", "scripting", "storage", "alarms"],
-
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "alarms",
+    "debugger"
+  ],
   "externally_connectable": {
-    "matches": ["https://*.netlify.app/*", "http://localhost/*"]
+    "matches": [
+      "https://*.netlify.app/*",
+      "http://localhost/*"
+    ]
   }
 }

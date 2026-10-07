@@ -5,7 +5,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { CaptureMode, Category, EvidenceBase, Library, LibraryRole, Viewport } from './evidence';
+import type { CaptureMode, Category, EvidenceBase, Library, LibraryRole, MobileShot, Viewport } from './evidence';
 import { isCategory } from './evidence';
 import { isShapeArray, type Shape } from './annotations';
 
@@ -32,6 +32,7 @@ export interface EvidenceRow {
   screenshot_width: number;
   screenshot_height: number;
   annotations: Shape[] | null;
+  mobile: MobileShot | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -43,6 +44,9 @@ export interface RemoteEvidence extends EvidenceBase {
   createdBy: string | null;
   screenshotPath: string;
   thumbnailPath: string;
+  /** Storage paths of the mobile version; null when there is none. */
+  mobileScreenshotPath: string | null;
+  mobileThumbnailPath: string | null;
   deletedAt: string | null;
 }
 
@@ -64,7 +68,7 @@ export interface Invite {
 }
 
 export const EVIDENCE_COLUMNS =
-  'id,library_id,created_by,url,domain,page_title,page_type,viewport,capture_mode,category,observation,why_it_matters,notes,tags,screenshot_path,thumbnail_path,screenshot_width,screenshot_height,annotations,created_at,updated_at,deleted_at';
+  'id,library_id,created_by,url,domain,page_title,page_type,viewport,capture_mode,category,observation,why_it_matters,notes,tags,screenshot_path,thumbnail_path,screenshot_width,screenshot_height,annotations,mobile,created_at,updated_at,deleted_at';
 
 export function rowToEvidence(row: EvidenceRow): RemoteEvidence {
   return {
@@ -87,9 +91,24 @@ export function rowToEvidence(row: EvidenceRow): RemoteEvidence {
     screenshotWidth: row.screenshot_width,
     screenshotHeight: row.screenshot_height,
     annotations: isShapeArray(row.annotations) ? row.annotations : [],
+    mobile: normalizeMobile(row.mobile),
+    mobileScreenshotPath: row.mobile ? storagePaths(row.library_id, row.id).mobileScreenshot : null,
+    mobileThumbnailPath: row.mobile ? storagePaths(row.library_id, row.id).mobileThumbnail : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
+  };
+}
+
+function normalizeMobile(value: unknown): MobileShot | null {
+  if (!value || typeof value !== 'object') return null;
+  const m = value as Partial<MobileShot>;
+  if (typeof m.width !== 'number' || typeof m.height !== 'number') return null;
+  return {
+    width: m.width,
+    height: m.height,
+    viewport: m.viewport ?? { width: 0, height: 0 },
+    annotations: isShapeArray(m.annotations) ? m.annotations : [],
   };
 }
 
@@ -97,6 +116,8 @@ export function storagePaths(libraryId: string, evidenceId: string) {
   return {
     screenshot: `${libraryId}/${evidenceId}/screenshot.png`,
     thumbnail: `${libraryId}/${evidenceId}/thumb.jpg`,
+    mobileScreenshot: `${libraryId}/${evidenceId}/mobile.png`,
+    mobileThumbnail: `${libraryId}/${evidenceId}/mobile-thumb.jpg`,
   };
 }
 
@@ -295,6 +316,7 @@ export async function upsertEvidence(db: SupabaseClient, e: UpsertEvidenceInput)
         screenshot_width: e.screenshotWidth,
         screenshot_height: e.screenshotHeight,
         annotations: e.annotations ?? [],
+        mobile: e.mobile ?? null,
         created_at: e.createdAt,
         updated_at: e.updatedAt,
         deleted_at: null,
@@ -343,11 +365,45 @@ export async function updateEvidenceAnnotations(db: SupabaseClient, id: string, 
 }
 
 /** Soft delete + remove the files. Other devices pull the tombstone and drop their copy. */
-export async function deleteEvidence(db: SupabaseClient, e: Pick<RemoteEvidence, 'id' | 'screenshotPath' | 'thumbnailPath'>): Promise<void> {
+export async function deleteEvidence(
+  db: SupabaseClient,
+  e: Pick<RemoteEvidence, 'id' | 'screenshotPath' | 'thumbnailPath'> & Partial<Pick<RemoteEvidence, 'mobileScreenshotPath' | 'mobileThumbnailPath'>>,
+): Promise<void> {
   const now = new Date().toISOString();
   const { error } = await db.from('evidence').update({ deleted_at: now, updated_at: now }).eq('id', e.id);
   throwIf(error);
-  await db.storage.from(BUCKET).remove([e.screenshotPath, e.thumbnailPath]);
+  const files = [e.screenshotPath, e.thumbnailPath, e.mobileScreenshotPath, e.mobileThumbnailPath].filter((p): p is string => !!p);
+  await db.storage.from(BUCKET).remove(files);
+}
+
+/** Replace the markings drawn on the mobile version. */
+export async function updateMobileAnnotations(db: SupabaseClient, e: Pick<RemoteEvidence, 'id' | 'mobile'>, annotations: Shape[]): Promise<RemoteEvidence> {
+  if (!e.mobile) throw new Error('This evidence has no mobile version.');
+  const { data, error } = await db
+    .from('evidence')
+    .update({ mobile: { ...e.mobile, annotations }, updated_at: new Date().toISOString() })
+    .eq('id', e.id)
+    .select(EVIDENCE_COLUMNS)
+    .single();
+  throwIf(error);
+  return rowToEvidence(data as unknown as EvidenceRow);
+}
+
+export async function uploadMobileScreenshots(
+  db: SupabaseClient,
+  libraryId: string,
+  evidenceId: string,
+  screenshot: Blob,
+  thumbnail: Blob,
+): Promise<void> {
+  const paths = storagePaths(libraryId, evidenceId);
+  const bucket = db.storage.from(BUCKET);
+  const [a, b] = await Promise.all([
+    bucket.upload(paths.mobileScreenshot, screenshot, { contentType: 'image/png', upsert: true }),
+    bucket.upload(paths.mobileThumbnail, thumbnail, { contentType: 'image/jpeg', upsert: true }),
+  ]);
+  throwIf(a.error);
+  throwIf(b.error);
 }
 
 // ---------------------------------------------------------------------------

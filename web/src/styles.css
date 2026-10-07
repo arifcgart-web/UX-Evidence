@@ -888,16 +888,18 @@ code {
 }
 
 /* background picker */
+/* Sits in the right-hand gutter, outside the app panel, level with its bottom edge */
 .bg-picker {
   position: fixed;
-  right: 22px;
-  bottom: 20px;
+  right: calc((var(--gap-x) - 24px) / 2);
+  bottom: var(--gap-y);
   z-index: 25;
 }
 .bg-btn {
   appearance: none;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: rgba(0, 0, 0, 0.65);
@@ -920,7 +922,7 @@ code {
 .bg-pop {
   position: absolute;
   right: 0;
-  bottom: 40px;
+  bottom: 32px;
   width: 228px;
   background: var(--menu-bg);
   color: var(--menu-text);
@@ -1234,9 +1236,21 @@ code {
   border-color: transparent;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
 }
-.thumb-badge.marks {
+.thumb-badges {
+  position: absolute;
+  top: 10px;
   right: 10px;
+  display: flex;
+  gap: 4px;
+}
+.thumb-badges .thumb-badge {
+  position: static;
+}
+.thumb-badge.marks {
   color: var(--text-2);
+}
+.thumb-badge.mobile {
+  color: var(--text);
 }
 .card-body {
   padding: 12px 14px;
@@ -1342,7 +1356,8 @@ code {
   flex-wrap: nowrap;
   overflow: hidden;
 }
-.list-view .thumb-badge {
+.list-view .thumb-badge,
+.list-view .thumb-badges {
   display: none;
 }
 
@@ -1388,7 +1403,7 @@ code {
   top: 16px;
   right: 16px;
   bottom: 16px;
-  width: 560px;
+  width: max(560px, 50vw);
   max-width: calc(100vw - 32px);
   background: var(--bg);
   color: var(--text);
@@ -1457,6 +1472,9 @@ code {
 }
 .shot {
   display: block;
+  width: 100%;
+  padding: 0;
+  cursor: zoom-in;
   position: relative;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1471,24 +1489,98 @@ code {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 380px;
+  max-height: 480px;
   object-fit: contain;
 }
 .shot.placeholder {
   height: 200px;
 }
-.shot-dim {
+.shot-zoom {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10.5px;
-  background: rgba(17, 17, 19, 0.78);
+  right: 10px;
+  top: 10px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.shot-zoom:hover {
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
-  padding: 3px 7px;
-  border-radius: 4px;
+}
+
+/* Enlarged screenshot: 80% of the screen */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(10, 10, 12, 0.78);
+  backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  animation: fade-in 120ms ease-out;
+}
+.lightbox-box {
+  position: relative;
+  width: 80vw;
+  height: 80vh;
+  border-radius: 14px;
+  overflow: hidden;
+  background: repeating-conic-gradient(#1c1c21 0 25%, #232329 0 50%) 0 0 / 18px 18px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+}
+.lightbox-img {
+  width: 100%;
+  height: 100%;
+}
+.lightbox-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.lightbox-bar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.lightbox-bar > * {
+  pointer-events: auto;
+}
+.lightbox-bar .marks-toggle.static {
+  position: static;
+  margin-right: auto;
+}
+.lightbox-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 0;
+  background: rgba(17, 17, 19, 0.72);
+  color: #fff;
+  cursor: pointer;
+}
+.lightbox-btn:hover {
+  background: var(--accent);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 .marks-toggle {
   position: absolute;
@@ -1554,6 +1646,70 @@ code {
 .meta dd.url {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+}
+/* Drawer content grouped into chunks */
+.chunk {
+  background: var(--bg-muted);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-top: 12px;
+}
+.chunk .block {
+  margin-bottom: 14px;
+}
+.chunk .block:last-child {
+  margin-bottom: 0;
+}
+.chunk.meta {
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 0;
+}
+.chunk.meta .block {
+  padding: 0 18px 16px;
+}
+.chunk-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 18px;
+  background: transparent;
+  border: 0;
+  color: var(--text-3);
+  cursor: pointer;
+  text-align: left;
+}
+.chunk-toggle h3 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 0;
+}
+.chunk-toggle:hover h3,
+.chunk-toggle:hover {
+  color: var(--text);
+}
+.chunk-chev {
+  transition: transform 140ms ease;
+}
+.chunk.meta.open .chunk-chev {
+  transform: rotate(180deg);
+}
+.chunk-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.chunk-actions .btn {
+  justify-content: center;
+}
+.drawer-body .shot-wrap {
+  margin-bottom: 4px;
 }
 .detail-actions {
   display: flex;
@@ -1826,6 +1982,9 @@ code {
    Responsive
    ========================================================================= */
 @media (max-width: 860px) {
+  .bg-picker {
+    display: none;
+  }
   :root {
     --gap-y: 12px;
     --gap-x: 12px;
@@ -1899,4 +2058,40 @@ code {
 .newcat-row .input {
   flex: 1;
   min-width: 0;
+}
+
+/* Desktop | Mobile switch above the screenshot */
+.view-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 8px;
+  background: var(--bg-muted);
+  border-radius: 9px;
+}
+.view-tabs button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.view-tabs button:hover {
+  color: var(--text);
+}
+.view-tabs button.on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.shot.is-mobile {
+  background: repeating-conic-gradient(rgba(122, 92, 255, 0.08) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
 }

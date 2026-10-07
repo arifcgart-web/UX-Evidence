@@ -65,20 +65,51 @@ const ICON_CLOSE = '<path d="M18 6 6 18M6 6l12 12"/>';
 const ICON_WARN = '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>';
 const ICON_CHEVRON = '<polyline points="9 18 15 12 9 6"/>';
 const NEW_CATEGORY = '__uxe_new__';
+const ICON_MONITOR = '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>';
+const ICON_PHONE = '<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/>';
+const ICON_PLUS = '<path d="M12 5v14M5 12h14"/>';
+const ICON_RETAKE = '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>';
+const ICON_TRASH = '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>';
+
+/** What the form needs to show one view (desktop or mobile). */
+export interface ViewPreview {
+  previewUrl: string;
+  previewWidth: number;
+  previewHeight: number;
+}
+
+/** Hooks the content script provides for the mobile view. */
+export interface MobileHooks {
+  /** Hide nothing — the form hides itself first. Returns the new preview, null if cancelled, or an error. */
+  capture: () => Promise<ViewPreview | { error: string } | null>;
+  remove: () => Promise<void>;
+}
+
+type ViewName = 'desktop' | 'mobile';
 const ICON_PEN = '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
 
 export interface FormResult {
   action: 'save' | 'cancel';
   fields: EvidenceFields;
   annotations: Shape[];
+  /** Markings on the mobile view; undefined when there is no mobile view. */
+  mobileAnnotations?: Shape[];
 }
 
 export class EvidenceForm {
   private scrim = el('div', 'uxe-scrim');
   private tags: string[] = [];
   private shapes: Shape[] = [];
+  private mobile: (ViewPreview & { shapes: Shape[] }) | null = null;
+  private view: ViewName = 'desktop';
+  private previewBox!: HTMLDivElement;
+  private previewImg!: HTMLImageElement;
   private previewOverlay!: HTMLDivElement;
   private annotateBtn!: HTMLButtonElement;
+  private mobileActions!: HTMLDivElement;
+  private tabDesktop!: HTMLButtonElement;
+  private tabMobile!: HTMLButtonElement;
+  private mobileError!: HTMLDivElement;
   private resolve!: (r: FormResult) => void;
   private settled = false;
 
@@ -102,6 +133,7 @@ export class EvidenceForm {
     private draft: DraftCreated,
     private knownTags: string[],
     private addCategory: (name: string) => Promise<Result<string[]>>,
+    private mobileHooks?: MobileHooks,
   ) {
     this.customCategories = draft.categories ?? [];
   }
@@ -169,18 +201,58 @@ export class EvidenceForm {
     // Body
     const body = el('div', 'uxe-body');
 
+    // Desktop | Mobile switch (mobile is captured on demand)
+    const tabs = el('div', 'uxe-viewtabs');
+    tabs.setAttribute('role', 'tablist');
+    this.tabDesktop = el('button', 'uxe-viewtab on');
+    this.tabDesktop.type = 'button';
+    this.tabDesktop.setAttribute('role', 'tab');
+    this.tabDesktop.append(icon(ICON_MONITOR, 13), el('span', undefined, 'Desktop'));
+    this.tabDesktop.addEventListener('click', () => this.showView('desktop'));
+    this.tabMobile = el('button', 'uxe-viewtab add');
+    this.tabMobile.type = 'button';
+    this.tabMobile.setAttribute('role', 'tab');
+    this.tabMobile.addEventListener('click', () => {
+      if (this.mobile) this.showView('mobile');
+      else void this.captureMobile();
+    });
+    tabs.append(this.tabDesktop, this.tabMobile);
+    if (this.mobileHooks) body.append(tabs);
+
     const preview = el('div', 'uxe-preview');
-    const img = el('img');
-    img.src = this.draft.previewUrl;
-    img.alt = 'Captured screenshot';
+    this.previewBox = preview;
+    this.previewImg = el('img');
+    this.previewImg.alt = 'Captured screenshot';
     this.previewOverlay = el('div', 'uxe-overlay-marks');
     this.annotateBtn = el('button', 'uxe-annotate');
     this.annotateBtn.type = 'button';
     this.annotateBtn.append(icon(ICON_PEN, 13), el('span', undefined, 'Annotate'));
     this.annotateBtn.addEventListener('click', () => void this.annotate());
-    preview.append(img, this.previewOverlay, el('span', 'uxe-dim', `${this.draft.previewWidth}×${this.draft.previewHeight}`), this.annotateBtn);
-    img.addEventListener('load', () => this.paintMarks());
+
+    this.mobileActions = el('div', 'uxe-mobile-actions');
+    const retake = el('button', 'uxe-annotate');
+    retake.type = 'button';
+    retake.title = 'Capture the mobile view again';
+    retake.append(icon(ICON_RETAKE, 12), el('span', undefined, 'Retake'));
+    retake.addEventListener('click', () => void this.captureMobile());
+    const remove = el('button', 'uxe-annotate danger');
+    remove.type = 'button';
+    remove.title = 'Remove the mobile view';
+    remove.setAttribute('aria-label', 'Remove mobile view');
+    remove.append(icon(ICON_TRASH, 12));
+    remove.addEventListener('click', () => void this.removeMobile());
+    this.mobileActions.append(retake, remove);
+
+    preview.append(this.previewImg, this.previewOverlay, this.annotateBtn, this.mobileActions);
+    this.previewImg.addEventListener('load', () => this.paintMarks());
     body.append(preview);
+
+    this.mobileError = el('div', 'uxe-error');
+    this.mobileError.style.display = 'none';
+    this.mobileError.style.marginTop = '-6px';
+    this.mobileError.style.marginBottom = '10px';
+    body.append(this.mobileError);
+    this.renderView();
 
     if (this.draft.clipped) {
       const note = el('div', 'uxe-clipped');
@@ -303,31 +375,109 @@ export class EvidenceForm {
     // Clicking the dimmed page area shouldn't lose the form — do nothing.
   }
 
+  // ---------------------------------------------------------------------
+  // Desktop / mobile views
+  // ---------------------------------------------------------------------
+
+  private currentShapes(): Shape[] {
+    return this.view === 'mobile' && this.mobile ? this.mobile.shapes : this.shapes;
+  }
+
+  private setCurrentShapes(shapes: Shape[]) {
+    if (this.view === 'mobile' && this.mobile) this.mobile.shapes = shapes;
+    else this.shapes = shapes;
+  }
+
+  private showView(view: ViewName) {
+    this.view = view === 'mobile' && this.mobile ? 'mobile' : 'desktop';
+    this.renderView();
+  }
+
+  private renderView() {
+    const isMobile = this.view === 'mobile' && !!this.mobile;
+    const src = isMobile ? this.mobile!.previewUrl : this.draft.previewUrl;
+    if (this.previewImg.src !== src) this.previewImg.src = src;
+    this.previewBox.classList.toggle('is-mobile', isMobile);
+    this.mobileActions.style.display = isMobile ? '' : 'none';
+
+    this.tabDesktop.classList.toggle('on', !isMobile);
+    this.tabDesktop.setAttribute('aria-selected', String(!isMobile));
+    this.tabMobile.classList.toggle('on', isMobile);
+    this.tabMobile.classList.toggle('add', !this.mobile);
+    this.tabMobile.setAttribute('aria-selected', String(isMobile));
+    this.tabMobile.replaceChildren(
+      icon(this.mobile ? ICON_PHONE : ICON_PLUS, 13),
+      el('span', undefined, this.mobile ? 'Mobile' : 'Add mobile view'),
+    );
+    this.paintMarks();
+  }
+
+  /** Hide the form, let the user pick the same section at phone width, then come back. */
+  private async captureMobile() {
+    if (!this.mobileHooks) return;
+    this.mobileError.style.display = 'none';
+    this.scrim.remove();
+    window.removeEventListener('keydown', this.onKey, true);
+
+    const result = await this.mobileHooks.capture();
+
+    this.root.append(this.scrim);
+    this.host.dataset.mode = 'form';
+    window.addEventListener('keydown', this.onKey, true);
+
+    if (result && 'error' in result) {
+      this.mobileError.textContent = result.error;
+      this.mobileError.style.display = '';
+    } else if (result) {
+      this.mobile = { ...result, shapes: [] };
+      this.view = 'mobile';
+    }
+    this.renderView();
+  }
+
+  private async removeMobile() {
+    if (!this.mobileHooks || !this.mobile) return;
+    await this.mobileHooks.remove();
+    this.mobile = null;
+    this.view = 'desktop';
+    this.renderView();
+  }
+
   /** Open the full-size editor over the page (75% of the window). */
   private async annotate() {
     this.scrim.style.visibility = 'hidden';
+    const isMobile = this.view === 'mobile' && !!this.mobile;
     const result = await openAnnotationEditor({
-      imageUrl: this.draft.previewUrl,
-      shapes: this.shapes,
+      imageUrl: isMobile ? this.mobile!.previewUrl : this.draft.previewUrl,
+      shapes: this.currentShapes(),
       viewportFraction: 0.75,
       root: this.root,
-      title: 'Annotate screenshot',
+      title: isMobile ? 'Annotate mobile screenshot' : 'Annotate screenshot',
     });
     this.scrim.style.visibility = '';
-    if (result) this.shapes = result;
+    if (result) this.setCurrentShapes(result);
     this.paintMarks();
     this.observation.focus();
   }
 
+  /** Draw markings over the image's *rendered* box (object-fit: contain may letterbox it). */
   private paintMarks() {
-    const img = this.previewOverlay.previousElementSibling as HTMLImageElement | null;
+    const img = this.previewImg;
     if (!img) return;
-    const w = img.clientWidth;
-    const h = img.clientHeight;
+    const cw = img.clientWidth;
+    const ch = img.clientHeight;
+    const nw = img.naturalWidth || cw || 1;
+    const nh = img.naturalHeight || ch || 1;
+    const scale = Math.min(cw / nw, ch / nh);
+    const w = nw * scale;
+    const h = nh * scale;
+    this.previewOverlay.style.left = `${img.offsetLeft + (cw - w) / 2}px`;
+    this.previewOverlay.style.top = `${img.offsetTop + (ch - h) / 2}px`;
     this.previewOverlay.style.width = `${w}px`;
     this.previewOverlay.style.height = `${h}px`;
-    this.previewOverlay.innerHTML = overlaySvg(this.shapes, w, h);
-    this.annotateBtn.lastElementChild!.textContent = this.shapes.length ? `Markings (${this.shapes.length})` : 'Annotate';
+    const shapes = this.currentShapes();
+    this.previewOverlay.innerHTML = overlaySvg(shapes, w, h);
+    this.annotateBtn.lastElementChild!.textContent = shapes.length ? `Markings (${shapes.length})` : 'Annotate';
   }
 
   // ---------------------------------------------------------------------
@@ -505,6 +655,7 @@ export class EvidenceForm {
         tags: this.tags,
       },
       annotations: this.shapes,
+      mobileAnnotations: this.mobile ? this.mobile.shapes : undefined,
     });
   }
 

@@ -8,18 +8,27 @@ import { EDITOR_CSS } from '@shared/annotationEditor';
 export const OVERLAY_CSS = /* css */ `
   ${EDITOR_CSS}
 
+  /*
+   * !important on purpose: a page stylesheet that targets our host element
+   * (e.g. "div { font-family: serif }" or "* { font: inherit }") beats a plain
+   * :host rule. Important declarations from inside the shadow root win.
+   */
   :host {
-    all: initial;
-    position: fixed;
-    inset: 0;
-    z-index: 2147483646;
-    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 13px;
-    line-height: 1.45;
-    color: #111113;
-    -webkit-font-smoothing: antialiased;
+    all: initial !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483646 !important;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    font-style: normal !important;
+    line-height: 1.45 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    color: #111113 !important;
+    -webkit-font-smoothing: antialiased !important;
   }
-  :host([data-mode="idle"]) { pointer-events: none; }
+  :host([data-mode="idle"]) { pointer-events: none !important; }
 
   *, *::before, *::after { box-sizing: border-box; }
   button, input, select, textarea { font: inherit; color: inherit; }
@@ -75,6 +84,11 @@ export const OVERLAY_CSS = /* css */ `
     pointer-events: none;
   }
   .uxe-hint span { display: inline-flex; align-items: center; gap: 6px; }
+  .uxe-hint .uxe-hint-title { font-weight: 600; color: #c4b5ff; flex-basis: 100%; justify-content: center; }
+  .uxe-hint.wide {
+    flex-wrap: wrap; justify-content: center; row-gap: 6px; column-gap: 12px;
+    width: max-content; max-width: calc(100vw - 24px); border-radius: 14px; padding: 10px 14px; font-size: 12px;
+  }
   .uxe-hint kbd {
     font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
     background: #2a2a2e;
@@ -142,7 +156,25 @@ export const OVERLAY_CSS = /* css */ `
     background: repeating-conic-gradient(#f6f6f8 0 25%, #fff 0 50%) 0 0 / 16px 16px;
     margin-bottom: 12px;
   }
-  .uxe-preview img { display: block; width: 100%; height: auto; max-height: 220px; object-fit: contain; }
+  .uxe-preview img { display: block; width: 100%; height: 220px; object-fit: contain; }
+  .uxe-preview.is-mobile { background: repeating-conic-gradient(#f1eefc 0 25%, #f8f6ff 0 50%) 0 0 / 16px 16px; }
+
+  .uxe-viewtabs {
+    display: inline-flex; gap: 2px; padding: 3px; margin-bottom: 8px;
+    background: #f1f1f4; border-radius: 9px;
+  }
+  .uxe-viewtab {
+    appearance: none; border: 0; background: transparent; color: #52525b;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500; padding: 5px 11px; border-radius: 7px; cursor: pointer;
+  }
+  .uxe-viewtab:hover { color: #111113; }
+  .uxe-viewtab.on { background: #fff; color: #111113; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .uxe-viewtab.add { color: #7a5cff; }
+  .uxe-viewtab.add:hover { background: #efeaff; }
+  .uxe-mobile-actions { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px; }
+  .uxe-mobile-actions .uxe-annotate { position: static; }
+  .uxe-annotate.danger:hover { border-color: #dc2626; color: #dc2626; }
   .uxe-overlay-marks { position: absolute; left: 0; top: 0; pointer-events: none; }
   .uxe-annotate {
     position: absolute; left: 6px; bottom: 6px; appearance: none; border: 1px solid #e5e5ea; background: rgba(255,255,255,.95);

@@ -55,6 +55,17 @@ export interface CaptureContext {
   pageType: string;
 }
 
+/** Phone-sized view used when adding a mobile version of a capture. */
+export const MOBILE_VIEWPORT = { width: 390, height: 844, deviceScaleFactor: 3 } as const;
+
+/** The mobile version of the same section: its own size, viewport and markings. */
+export interface MobileShot {
+  width: number;
+  height: number;
+  viewport: Viewport;
+  annotations: Shape[];
+}
+
 /**
  * The blob-free core of an evidence item. The extension adds local blobs and
  * sync state on top; the web app adds storage paths.
@@ -66,6 +77,8 @@ export interface EvidenceBase extends EvidenceFields, CaptureContext {
   captureMode: CaptureMode;
   /** Rectangles/arrows drawn over the screenshot (see shared/annotations.ts). */
   annotations: Shape[];
+  /** Optional mobile version of the same section (null/absent when not captured). */
+  mobile?: MobileShot | null;
   createdAt: string;
   updatedAt: string;
 }

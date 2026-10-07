@@ -1,6 +1,7 @@
 import type { EvidenceRecord } from '../../types/evidence';
 import { truncate } from '@shared/format';
 import { AnnotatedImage } from './AnnotatedImage';
+import { Icon } from './Icon';
 
 interface Props {
   record: EvidenceRecord;
@@ -19,6 +20,11 @@ export function EvidenceCard({ record, thumbUrl, onOpen, onTag }: Props) {
             <span className="site">{record.domain}</span>
             <span className="dot">·</span>
             <span className="cat">{record.category}</span>
+            {record.mobile && (
+              <span className="has-mobile" title="Includes a mobile view" aria-label="Includes a mobile view">
+                <Icon name="phone" size={12} />
+              </span>
+            )}
           </div>
           <p className="obs">{truncate(record.observation, 90)}</p>
         </div>

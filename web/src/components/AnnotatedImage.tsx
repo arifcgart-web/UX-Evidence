@@ -29,7 +29,8 @@ export function AnnotatedImage({ src, alt, shapes, hidden, className, cover, chi
     if (!el || !im) return;
 
     const measure = () => {
-      const r = el.getBoundingClientRect();
+      // Layout size (not getBoundingClientRect) so CSS transforms on ancestors don't skew the overlay.
+      const r = { width: el.clientWidth, height: el.clientHeight };
       const nw = im.naturalWidth || 1;
       const nh = im.naturalHeight || 1;
       if (cover) {

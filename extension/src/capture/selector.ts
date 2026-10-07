@@ -12,7 +12,7 @@ import type { CaptureMode } from '../types/evidence';
 
 export interface Selection {
   rect: Rect;
-  mode: Extract<CaptureMode, 'element' | 'region'>;
+  mode: CaptureMode;
   /** True when the element extended beyond the viewport and was clipped. */
   clipped: boolean;
 }
@@ -66,7 +66,11 @@ export class ElementSelector {
   private resolve!: (s: Selection | null) => void;
   private done = false;
 
-  constructor(root: ShadowRoot, private host: HTMLElement) {
+  constructor(
+    root: ShadowRoot,
+    private host: HTMLElement,
+    private options: { title?: string; wholeScreen?: boolean } = {},
+  ) {
     this.root = root;
     this.overlay = document.createElement('div');
     this.overlay.className = 'uxe-overlay';
@@ -79,10 +83,13 @@ export class ElementSelector {
     this.hint = document.createElement('div');
     this.hint.className = 'uxe-hint';
     this.hint.innerHTML =
+      (options.title ? `<span class="uxe-hint-title">${options.title}</span>` : '') +
       '<span><b>Click</b> element</span>' +
       '<span><b>Drag</b> region</span>' +
+      (options.wholeScreen ? '<span><kbd>Space</kbd> whole screen</span>' : '') +
       '<span><kbd>↑</kbd><kbd>↓</kbd> parent / child</span>' +
       '<span><kbd>Esc</kbd> cancel</span>';
+    if (options.title) this.hint.classList.add('wide');
   }
 
   /** Resolves with the selection, or null if the user cancelled. */
@@ -260,6 +267,12 @@ export class ElementSelector {
         e.preventDefault();
         e.stopPropagation();
         this.captureHovered();
+        return;
+      case ' ':
+        if (!this.options.wholeScreen) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.finish({ rect: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }, mode: 'visible', clipped: false });
         return;
       case 'ArrowUp': {
         if (!this.hovered) return;

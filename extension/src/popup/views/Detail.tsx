@@ -36,23 +36,29 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
   const [actionError, setActionError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [showMarks, setShowMarks] = useState(true);
-  const hasMarks = (record.annotations ?? []).length > 0;
+  const [view, setView] = useState<'desktop' | 'mobile'>('desktop');
+  const isMobile = view === 'mobile' && !!record.mobile;
+  const shapes = (isMobile ? record.mobile?.annotations : record.annotations) ?? [];
+  const hasMarks = shapes.length > 0;
+  const fullBlob = isMobile ? record.mobileScreenshot : record.screenshot;
 
-  // Items pulled from the cloud arrive with a thumbnail only; fetch the full image once.
+  useEffect(() => setView('desktop'), [record.id]);
+
+  // Items pulled from the cloud arrive with thumbnails only; fetch the full image once per view.
   useEffect(() => {
-    if (record.screenshot || fetching) return;
+    if (fullBlob || fetching || !record.libraryId) return;
     setFetching(true);
     (async () => {
-      const res = await send<boolean>({ type: 'FETCH_SCREENSHOT', id: record.id });
+      const res = await send<boolean>({ type: 'FETCH_SCREENSHOT', id: record.id, view: isMobile ? 'mobile' : 'desktop' });
       if (res.ok && res.data) {
         const fresh = await getEvidence(record.id);
         if (fresh) onReplace(fresh);
       }
       setFetching(false);
     })();
-  }, [record.id, record.screenshot, fetching, onReplace]);
+  }, [record.id, record.libraryId, fullBlob, isMobile, fetching, onReplace]);
 
-  const imageBlob = record.screenshot ?? record.thumbnail;
+  const imageBlob = (isMobile ? record.mobileScreenshot ?? record.mobileThumbnail : record.screenshot) ?? record.thumbnail;
   const imageUrl = useMemo(() => URL.createObjectURL(imageBlob), [imageBlob]);
   useEffect(() => () => URL.revokeObjectURL(imageUrl), [imageUrl]);
 
@@ -65,7 +71,8 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
   }, [editing, onBack]);
 
   const openSource = () => void chrome.tabs.create({ url: record.url });
-  const openAnnotate = () => void chrome.tabs.create({ url: chrome.runtime.getURL(`annotate.html?id=${record.id}`) });
+  const openAnnotate = () =>
+    void chrome.tabs.create({ url: chrome.runtime.getURL(`annotate.html?id=${record.id}${isMobile ? '&view=mobile' : ''}`) });
 
   const openFullSize = async () => {
     // Data URLs survive the popup closing; blob URLs don't.
@@ -138,13 +145,20 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
       </header>
 
       <div className="detail-body">
+        {record.mobile && (
+          <div className="view-tabs" role="tablist" aria-label="Screenshot view">
+            <button type="button" role="tab" aria-selected={!isMobile} className={!isMobile ? 'on' : ''} onClick={() => setView('desktop')}>
+              <Icon name="monitor" size={14} /> Desktop
+            </button>
+            <button type="button" role="tab" aria-selected={isMobile} className={isMobile ? 'on' : ''} onClick={() => setView('mobile')}>
+              <Icon name="phone" size={14} /> Mobile
+            </button>
+          </div>
+        )}
         <div className="shot-wrap">
-          <button type="button" className="shot" onClick={openFullSize} title="Open full size">
-            <AnnotatedImage src={imageUrl} alt={record.observation} shapes={record.annotations ?? []} hidden={!showMarks} />
-            <span className="shot-dim">
-              <Icon name="expand" size={11} /> {record.screenshotWidth}×{record.screenshotHeight}
-              {!record.screenshot && (fetching ? ' · loading full size…' : ' · preview')}
-            </span>
+          <button type="button" className={`shot${isMobile ? ' is-mobile' : ''}`} onClick={openFullSize} title="Open full size">
+            <AnnotatedImage src={imageUrl} alt={record.observation} shapes={shapes} hidden={!showMarks} />
+            {!fullBlob && fetching && <span className="shot-dim">loading full size…</span>}
             {record.syncState === 'pending' && <span className="shot-sync">waiting to upload</span>}
           </button>
           {hasMarks && (

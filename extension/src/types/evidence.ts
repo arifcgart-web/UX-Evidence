@@ -28,6 +28,10 @@ export interface EvidenceRecord extends EvidenceBase {
   /** Always present: captured locally or downloaded on pull. */
   thumbnail: Blob;
 
+  /** Mobile version files (see `mobile` for its size/markings). Absent on older rows. */
+  mobileScreenshot?: Blob | null;
+  mobileThumbnail?: Blob | null;
+
   /** Cloud library this item belongs to; null while local-only. */
   libraryId: string | null;
   syncState: SyncState;

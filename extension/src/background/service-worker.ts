@@ -23,6 +23,7 @@ import {
 } from '../storage/evidenceStore';
 import { metaGet } from '../storage/db';
 import { processCapture } from '../utils/image';
+import { captureMobile, enterMobile, exitMobile, removeMobile } from './mobile';
 import { friendlyError, restrictionReason } from '../utils/restrictedPages';
 import {
   addCategory,
@@ -142,7 +143,7 @@ async function handle(
 
     case 'SAVE_EVIDENCE': {
       try {
-        const saved = await commitDraft(message.draftId, message.fields, message.annotations);
+        const saved = await commitDraft(message.draftId, message.fields, message.annotations, message.mobileAnnotations);
         if (!saved) return fail('This capture expired. Please capture it again.');
         void syncNow();
         return ok({ id: saved.id });
@@ -218,6 +219,37 @@ async function handle(
         return fail(authError(error));
       }
 
+    case 'MOBILE_ENTER': {
+      const tabId = sender.tab?.id;
+      if (tabId === undefined) return fail('No tab to switch.');
+      try {
+        return ok(await enterMobile(tabId));
+      } catch (error) {
+        await exitMobile(tabId);
+        return fail(error instanceof Error ? error.message : "Couldn't switch to a mobile view.");
+      }
+    }
+
+    case 'MOBILE_EXIT': {
+      const tabId = sender.tab?.id;
+      if (tabId !== undefined) await exitMobile(tabId);
+      return ok(null);
+    }
+
+    case 'MOBILE_CAPTURE': {
+      const tabId = sender.tab?.id;
+      if (tabId === undefined) return fail('No tab to capture.');
+      try {
+        return ok(await captureMobile(tabId, message.draftId, message.rect, message.viewport));
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : "The mobile view couldn't be captured.");
+      }
+    }
+
+    case 'MOBILE_REMOVE':
+      await removeMobile(message.draftId);
+      return ok(null);
+
     case 'ADD_CATEGORY':
       try {
         return ok(await addCategory(message.name));
@@ -227,7 +259,7 @@ async function handle(
 
     case 'FETCH_SCREENSHOT':
       try {
-        return ok(await fetchScreenshot(message.id));
+        return ok(await fetchScreenshot(message.id, message.view ?? 'desktop'));
       } catch {
         return fail("Couldn't download the screenshot. Check your connection.");
       }

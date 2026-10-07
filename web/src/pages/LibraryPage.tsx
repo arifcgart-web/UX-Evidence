@@ -12,6 +12,7 @@ import {
   signedUrls,
   updateEvidenceAnnotations,
   updateEvidenceFields,
+  updateMobileAnnotations,
   type RemoteEvidence,
 } from '@shared/api';
 import { openAnnotationEditor, EDITOR_CSS } from '@shared/annotationEditor';
@@ -104,7 +105,7 @@ export function LibraryPage() {
       const rows = await listEvidence(db, libraryId);
       setItems(rows);
       setError(null);
-      setUrls(await signedUrls(db, rows.flatMap((r) => [r.thumbnailPath, r.screenshotPath])));
+      setUrls(await signedUrls(db, rows.flatMap((r) => [r.thumbnailPath, r.screenshotPath, ...(r.mobileScreenshotPath ? [r.mobileScreenshotPath] : [])])));
       const members = await listMembers(db, libraryId).catch(() => []);
       setMemberCount(members.length);
       const names = await listProfiles(db, members.map((m) => m.userId));
@@ -165,13 +166,22 @@ export function LibraryPage() {
     setItems((prev) => prev.map((i) => (i.id === id ? next : i)));
   };
 
-  const annotate = async (item: RemoteEvidence) => {
-    const url = urls.get(item.screenshotPath);
+  const annotate = async (item: RemoteEvidence, view: 'desktop' | 'mobile' = 'desktop') => {
+    const isMobile = view === 'mobile' && !!item.mobile && !!item.mobileScreenshotPath;
+    const url = urls.get(isMobile ? item.mobileScreenshotPath! : item.screenshotPath);
     if (!url) return;
     ensureEditorCss();
-    const result = await openAnnotationEditor({ imageUrl: url, shapes: item.annotations, viewportFraction: 0.8, root: document.body, title: `Annotate · ${item.domain}` });
+    const result = await openAnnotationEditor({
+      imageUrl: url,
+      shapes: isMobile ? item.mobile!.annotations : item.annotations,
+      viewportFraction: 0.8,
+      root: document.body,
+      title: `Annotate${isMobile ? ' mobile' : ''} · ${item.domain}`,
+    });
     if (!result) return;
-    const next = await updateEvidenceAnnotations(supabase(), item.id, result);
+    const next = isMobile
+      ? await updateMobileAnnotations(supabase(), item, result)
+      : await updateEvidenceAnnotations(supabase(), item.id, result);
     setItems((prev) => prev.map((i) => (i.id === item.id ? next : i)));
   };
 
@@ -353,11 +363,18 @@ export function LibraryPage() {
               {urls.get(item.thumbnailPath) ? (
                 <AnnotatedImage className="thumb" src={urls.get(item.thumbnailPath)!} alt="" shapes={item.annotations} cover>
                   <span className="thumb-badge cat">{item.category}</span>
-                  {item.annotations.length > 0 && (
-                    <span className="thumb-badge marks">
-                      <Icon name="pen" size={11} /> {item.annotations.length}
-                    </span>
-                  )}
+                  <span className="thumb-badges">
+                    {item.mobile && (
+                      <span className="thumb-badge mobile" title="Includes a mobile view">
+                        <Icon name="phone" size={11} /> Mobile
+                      </span>
+                    )}
+                    {item.annotations.length > 0 && (
+                      <span className="thumb-badge marks">
+                        <Icon name="pen" size={11} /> {item.annotations.length}
+                      </span>
+                    )}
+                  </span>
                 </AnnotatedImage>
               ) : (
                 <div className="thumb">
@@ -403,6 +420,7 @@ export function LibraryPage() {
         <DetailDrawer
           item={selected}
           screenshotUrl={urls.get(selected.screenshotPath)}
+          mobileUrl={selected.mobileScreenshotPath ? urls.get(selected.mobileScreenshotPath) : undefined}
           editable={editable}
           knownTags={tags}
           categories={customCategories}
@@ -424,6 +442,7 @@ export function LibraryPage() {
 interface DrawerProps {
   item: RemoteEvidence;
   screenshotUrl: string | undefined;
+  mobileUrl: string | undefined;
   editable: boolean;
   knownTags: string[];
   categories: string[];
@@ -433,31 +452,44 @@ interface DrawerProps {
   onTag: (tag: string) => void;
   onUpdate: (id: string, fields: EvidenceFields) => Promise<void>;
   onDelete: (item: RemoteEvidence) => Promise<void>;
-  onAnnotate: (item: RemoteEvidence) => Promise<void>;
+  onAnnotate: (item: RemoteEvidence, view: 'desktop' | 'mobile') => Promise<void>;
 }
 
-function DetailDrawer({ item, screenshotUrl, editable, knownTags, categories, onAddCategory, addedBy, onClose, onTag, onUpdate, onDelete, onAnnotate }: DrawerProps) {
+function DetailDrawer({ item, screenshotUrl: desktopUrl, mobileUrl, editable, knownTags, categories, onAddCategory, addedBy, onClose, onTag, onUpdate, onDelete, onAnnotate }: DrawerProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showMarks, setShowMarks] = useState(true);
-  const hasMarks = item.annotations.length > 0;
+  const [zoom, setZoom] = useState(false);
+  const [view, setView] = useState<'desktop' | 'mobile'>('desktop');
+  const isMobile = view === 'mobile' && !!item.mobile;
+  const screenshotUrl = isMobile ? mobileUrl : desktopUrl;
+  const shapes = (isMobile ? item.mobile?.annotations : item.annotations) ?? [];
+  // Details start collapsed for every item.
+  const [showDetails, setShowDetails] = useState(false);
+  const toggleDetails = () => setShowDetails((v) => !v);
+  const hasMarks = shapes.length > 0;
 
   useEffect(() => {
     setEditing(false);
     setConfirm(false);
     setErr(null);
+    setZoom(false);
+    setView('desktop');
+    setShowDetails(false);
   }, [item.id]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !editing) onClose();
+      if (e.key !== 'Escape') return;
+      if (zoom) setZoom(false);
+      else if (!editing) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing, onClose]);
+  }, [editing, onClose, zoom]);
 
   const save = async (fields: EvidenceFields) => {
     setSaving(true);
@@ -505,14 +537,24 @@ function DetailDrawer({ item, screenshotUrl, editable, knownTags, categories, on
         </header>
 
         <div className="drawer-body">
+          {item.mobile && (
+            <div className="view-tabs" role="tablist" aria-label="Screenshot view">
+              <button type="button" role="tab" aria-selected={!isMobile} className={!isMobile ? 'on' : ''} onClick={() => setView('desktop')}>
+                <Icon name="monitor" size={14} /> Desktop
+              </button>
+              <button type="button" role="tab" aria-selected={isMobile} className={isMobile ? 'on' : ''} onClick={() => setView('mobile')}>
+                <Icon name="phone" size={14} /> Mobile
+              </button>
+            </div>
+          )}
           {screenshotUrl ? (
-            <div className="shot-wrap">
-              <a className="shot" href={screenshotUrl} target="_blank" rel="noreferrer" title="Open full size">
-                <AnnotatedImage src={screenshotUrl} alt={item.observation} shapes={item.annotations} hidden={!showMarks} />
-                <span className="shot-dim">
-                  <Icon name="expand" size={11} /> {item.screenshotWidth}×{item.screenshotHeight}
-                </span>
-              </a>
+            <div className={`shot-wrap${isMobile ? ' is-mobile' : ''}`}>
+              <button type="button" className={`shot${isMobile ? ' is-mobile' : ''}`} title="Enlarge" onClick={() => setZoom(true)}>
+                <AnnotatedImage src={screenshotUrl} alt={item.observation} shapes={shapes} hidden={!showMarks} />
+              </button>
+              <button type="button" className="shot-zoom" title="Enlarge" aria-label="Enlarge screenshot" onClick={() => setZoom(true)}>
+                <Icon name="expand" size={14} />
+              </button>
               {hasMarks && (
                 <button type="button" className={`marks-toggle${showMarks ? '' : ' off'}`} onClick={() => setShowMarks((v) => !v)}>
                   <Icon name={showMarks ? 'eye' : 'eyeOff'} size={12} /> {showMarks ? 'Markings on' : 'Markings off'}
@@ -555,74 +597,108 @@ function DetailDrawer({ item, screenshotUrl, editable, knownTags, categories, on
             />
           ) : (
             <>
-              <section className="block">
-                <h3>Observation</h3>
-                <p className="lead">{item.observation}</p>
+              <section className="chunk">
+                <div className="block">
+                  <h3>Observation</h3>
+                  <p className="lead">{item.observation}</p>
+                </div>
+                {item.whyItMatters && (
+                  <div className="block">
+                    <h3>Why it matters</h3>
+                    <p>{item.whyItMatters}</p>
+                  </div>
+                )}
+                {item.notes && (
+                  <div className="block">
+                    <h3>Notes</h3>
+                    <p className="notes">{item.notes}</p>
+                  </div>
+                )}
               </section>
-              {item.whyItMatters && (
-                <section className="block">
-                  <h3>Why it matters</h3>
-                  <p>{item.whyItMatters}</p>
-                </section>
-              )}
-              {item.notes && (
-                <section className="block">
-                  <h3>Notes</h3>
-                  <p className="notes">{item.notes}</p>
-                </section>
-              )}
+
               {item.tags.length > 0 && (
-                <section className="block">
-                  <h3>Tags</h3>
-                  <div className="tag-row">
-                    {item.tags.map((t) => (
-                      <button type="button" key={t} className="tag" onClick={() => onTag(t)}>
-                        {t}
-                      </button>
-                    ))}
+                <section className="chunk">
+                  <div className="block">
+                    <h3>Tags</h3>
+                    <div className="tag-row">
+                      {item.tags.map((t) => (
+                        <button type="button" key={t} className="tag" onClick={() => onTag(t)}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </section>
               )}
-              <section className="block meta">
-                <dl>
-                  <dt>Page</dt>
-                  <dd title={item.url}>{item.pageTitle || item.url}</dd>
-                  <dt>URL</dt>
-                  <dd className="url" title={item.url}>
-                    {item.url}
-                  </dd>
-                  <dt>Viewport</dt>
-                  <dd className="wrap">
-                    {item.viewport.width}×{item.viewport.height}
-                    {item.pageType ? ` · ${item.pageType}` : ''}
-                  </dd>
-                  {addedBy && (
-                    <>
-                      <dt>Added by</dt>
-                      <dd>{addedBy}</dd>
-                    </>
-                  )}
-                </dl>
-              </section>
-              {editable && (
-                <div className="detail-actions one">
-                  <button type="button" className="btn ghost" onClick={() => void onAnnotate(item)}>
+
+              <section className="chunk-actions">
+                {editable && (
+                  <button type="button" className="btn ghost" onClick={() => void onAnnotate(item, isMobile ? 'mobile' : 'desktop')}>
                     <Icon name="pen" size={18} /> {hasMarks ? 'Edit markings' : 'Annotate'}
                   </button>
-                </div>
-              )}
-              <div className="detail-actions">
+                )}
                 <a className="btn ghost" href={item.url} target="_blank" rel="noreferrer">
                   <Icon name="external" size={18} /> Open source page
                 </a>
                 <button type="button" className="btn ghost" onClick={() => void copy()}>
                   <Icon name={copied ? 'check' : 'copy'} size={18} /> {copied ? 'Copied' : 'Copy URL'}
                 </button>
-              </div>
+              </section>
+
+              <section className={`chunk meta${showDetails ? ' open' : ''}`}>
+                <button type="button" className="chunk-toggle" aria-expanded={showDetails} onClick={toggleDetails}>
+                  <h3>Details</h3>
+                  <Icon name="chevron" size={14} className="chunk-chev" />
+                </button>
+                {showDetails && (
+                <div className="block">
+                  <dl>
+                    <dt>Page</dt>
+                    <dd title={item.url}>{item.pageTitle || item.url}</dd>
+                    <dt>URL</dt>
+                    <dd className="url" title={item.url}>
+                      {item.url}
+                    </dd>
+                    <dt>Viewport</dt>
+                    <dd className="wrap">
+                      {item.viewport.width}×{item.viewport.height}
+                      {item.pageType ? ` · ${item.pageType}` : ''}
+                    </dd>
+                    {addedBy && (
+                      <>
+                        <dt>Added by</dt>
+                        <dd>{addedBy}</dd>
+                      </>
+                    )}
+                  </dl>
+                </div>
+                )}
+              </section>
             </>
           )}
         </div>
       </aside>
+
+      {zoom && screenshotUrl && (
+        <div className="lightbox" role="dialog" aria-label="Screenshot" onClick={() => setZoom(false)}>
+          <div className="lightbox-box" onClick={(e) => e.stopPropagation()}>
+            <AnnotatedImage className="lightbox-img" src={screenshotUrl} alt={item.observation} shapes={shapes} hidden={!showMarks} />
+            <div className="lightbox-bar">
+              {hasMarks && (
+                <button type="button" className={`marks-toggle static${showMarks ? '' : ' off'}`} onClick={() => setShowMarks((v) => !v)}>
+                  <Icon name={showMarks ? 'eye' : 'eyeOff'} size={12} /> {showMarks ? 'Markings on' : 'Markings off'}
+                </button>
+              )}
+              <a className="lightbox-btn" href={screenshotUrl} target="_blank" rel="noreferrer" title="Open original in a new tab" aria-label="Open original">
+                <Icon name="external" size={16} />
+              </a>
+              <button type="button" className="lightbox-btn" title="Close" aria-label="Close" onClick={() => setZoom(false)}>
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

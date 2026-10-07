@@ -49,6 +49,7 @@ export interface SaveEvidenceMsg {
   draftId: string;
   fields: EvidenceFields;
   annotations?: Shape[];
+  mobileAnnotations?: Shape[];
 }
 
 /** content -> worker: the user cancelled the form; drop the draft. */
@@ -89,6 +90,26 @@ export interface SetLibraryMsg {
 export interface RefreshLibrariesMsg {
   type: 'REFRESH_LIBRARIES';
 }
+/** content -> worker: switch this tab to a phone-sized view (chrome.debugger emulation). */
+export interface MobileEnterMsg {
+  type: 'MOBILE_ENTER';
+}
+/** content -> worker: leave the phone-sized view. */
+export interface MobileExitMsg {
+  type: 'MOBILE_EXIT';
+}
+/** content -> worker: screenshot the phone view, crop, attach to the draft, then leave phone view. */
+export interface MobileCaptureMsg {
+  type: 'MOBILE_CAPTURE';
+  draftId: string;
+  rect: Rect | null;
+  viewport: { width: number; height: number };
+}
+/** content -> worker: drop the mobile view from a draft. */
+export interface MobileRemoveMsg {
+  type: 'MOBILE_REMOVE';
+  draftId: string;
+}
 /** any -> worker: add a custom category to the active library (or the local list). Returns the custom list. */
 export interface AddCategoryMsg {
   type: 'ADD_CATEGORY';
@@ -97,6 +118,7 @@ export interface AddCategoryMsg {
 export interface FetchScreenshotMsg {
   type: 'FETCH_SCREENSHOT';
   id: string;
+  view?: 'desktop' | 'mobile';
 }
 /** popup -> worker: store (or clear) the Supabase project the extension talks to. */
 export interface SetCloudConfigMsg {
@@ -124,6 +146,10 @@ export type ExtensionMessage =
   | SetLibraryMsg
   | RefreshLibrariesMsg
   | AddCategoryMsg
+  | MobileEnterMsg
+  | MobileExitMsg
+  | MobileCaptureMsg
+  | MobileRemoveMsg
   | FetchScreenshotMsg
   | SetCloudConfigMsg
   | LocalChangedMsg;

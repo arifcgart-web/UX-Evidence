@@ -1113,3 +1113,45 @@ kbd {
   flex: 1;
   min-width: 0;
 }
+
+/* Desktop | Mobile switch above the screenshot */
+.view-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 8px;
+  background: var(--bg-muted);
+  border-radius: 9px;
+}
+.view-tabs button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.view-tabs button:hover {
+  color: var(--text);
+}
+.view-tabs button.on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.shot.is-mobile {
+  background: repeating-conic-gradient(rgba(122, 92, 255, 0.08) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+}
+
+.card-meta .has-mobile {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--accent, #7a5cff);
+}

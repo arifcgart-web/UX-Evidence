@@ -6,7 +6,7 @@
  */
 
 import { ElementSelector } from './selector';
-import { EvidenceForm } from './form';
+import { EvidenceForm, type ViewPreview } from './form';
 import { collectContext } from './metadata';
 import { OVERLAY_CSS } from './styles';
 import type { DraftCreated, ExtensionMessage, Result } from '../types/messages';
@@ -78,8 +78,19 @@ function init() {
     }
 
     const tags = await send<string[]>({ type: 'GET_KNOWN_TAGS' });
-    const form = new EvidenceForm(root, host, draft.data, tags.ok ? tags.data : [], (name) =>
-      send<string[]>({ type: 'ADD_CATEGORY', name }),
+    const draftId = draft.data.draftId;
+    const form = new EvidenceForm(
+      root,
+      host,
+      draft.data,
+      tags.ok ? tags.data : [],
+      (name) => send<string[]>({ type: 'ADD_CATEGORY', name }),
+      {
+        capture: () => captureMobile(draftId),
+        remove: async () => {
+          await send({ type: 'MOBILE_REMOVE', draftId });
+        },
+      },
     );
 
     let result = await form.open();
@@ -90,6 +101,7 @@ function init() {
         draftId: draft.data.draftId,
         fields: result.fields,
         annotations: result.annotations,
+        mobileAnnotations: result.mobileAnnotations,
       });
       if (saved.ok) {
         toast('Evidence saved.');
@@ -100,6 +112,48 @@ function init() {
     }
 
     void send({ type: 'DISCARD_DRAFT', draftId: draft.data.draftId });
+  }
+
+  /** Wait until the layout reflects the emulated width (or give up after ~1.5s). */
+  async function waitForWidth(test: (w: number) => boolean): Promise<void> {
+    for (let i = 0; i < 30; i++) {
+      if (test(window.innerWidth)) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await nextPaint();
+  }
+
+  /**
+   * Phone-width capture of the same section: switch the tab to a 390px view,
+   * let the user pick the section again, screenshot it, then switch back.
+   */
+  async function captureMobile(draftId: string): Promise<ViewPreview | { error: string } | null> {
+    const desktopWidth = window.innerWidth;
+    const entered = await send<{ width: number; height: number }>({ type: 'MOBILE_ENTER' });
+    if (!entered.ok) return { error: entered.error };
+
+    try {
+      await waitForWidth((w) => w <= entered.data.width + 1);
+      const selector = new ElementSelector(root, host, { title: 'Mobile view · select the same section', wholeScreen: true });
+      const selection = await selector.start();
+      if (!selection) return null;
+
+      host.style.display = 'none';
+      await nextPaint();
+      const shot = await send<ViewPreview>({
+        type: 'MOBILE_CAPTURE',
+        draftId,
+        rect: selection.mode === 'visible' ? null : selection.rect,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      });
+      host.style.display = '';
+      if (!shot.ok) return { error: shot.error };
+      return shot.data;
+    } finally {
+      host.style.display = '';
+      await send({ type: 'MOBILE_EXIT' });
+      await waitForWidth((w) => w >= desktopWidth - 1);
+    }
   }
 
   async function enterCaptureMode() {

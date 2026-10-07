@@ -17,6 +17,7 @@ import {
   listEvidenceSince,
   listLibraries,
   storagePaths,
+  uploadMobileScreenshots,
   uploadScreenshots,
   upsertEvidence,
 } from '@shared/api';
@@ -265,7 +266,13 @@ async function push(): Promise<void> {
     const paths = storagePaths(item.libraryId, item.id);
 
     if (item.status === 'deleted') {
-      await deleteRemote(db, { id: item.id, screenshotPath: paths.screenshot, thumbnailPath: paths.thumbnail }).catch(
+      await deleteRemote(db, {
+        id: item.id,
+        screenshotPath: paths.screenshot,
+        thumbnailPath: paths.thumbnail,
+        mobileScreenshotPath: item.mobile ? paths.mobileScreenshot : null,
+        mobileThumbnailPath: item.mobile ? paths.mobileThumbnail : null,
+      }).catch(
         (e: Error) => {
           // Row already gone (deleted elsewhere) is fine; anything else should retry later.
           if (!/not found|0 rows/i.test(e.message)) throw e;
@@ -278,6 +285,9 @@ async function push(): Promise<void> {
     // Upload files only when we hold them locally and the cloud might not.
     if (item.screenshot) {
       await uploadScreenshots(db, item.libraryId, item.id, item.screenshot, item.thumbnail);
+    }
+    if (item.mobile && item.mobileScreenshot && item.mobileThumbnail) {
+      await uploadMobileScreenshots(db, item.libraryId, item.id, item.mobileScreenshot, item.mobileThumbnail);
     }
     const saved = await upsertEvidence(db, {
       ...item,
@@ -313,6 +323,10 @@ async function pull(libraryId: string): Promise<void> {
         thumbnail = await downloadFile(db, row.thumbnailPath).catch(() => existing?.thumbnail);
       }
       if (!thumbnail) continue; // file missing; skip rather than store a broken row
+      let mobileThumbnail: Blob | null = row.mobile ? existing?.mobileThumbnail ?? null : null;
+      if (row.mobileThumbnailPath && (!mobileThumbnail || !existing || existing.updatedAt !== row.updatedAt)) {
+        mobileThumbnail = await downloadFile(db, row.mobileThumbnailPath).catch(() => mobileThumbnail);
+      }
       await applyRemote({
         id: row.id,
         status: 'saved',
@@ -332,6 +346,9 @@ async function pull(libraryId: string): Promise<void> {
         notes: row.notes,
         tags: row.tags,
         annotations: row.annotations ?? [],
+        mobile: row.mobile ?? null,
+        mobileThumbnail,
+        mobileScreenshot: existing?.updatedAt === row.updatedAt ? existing.mobileScreenshot ?? null : null,
         libraryId: row.libraryId,
         syncState: 'synced',
         searchText: '',
@@ -345,9 +362,16 @@ async function pull(libraryId: string): Promise<void> {
 }
 
 /** Fetch the full-resolution screenshot for one item (detail view). */
-export async function fetchScreenshot(id: string): Promise<boolean> {
+export async function fetchScreenshot(id: string, view: 'desktop' | 'mobile' = 'desktop'): Promise<boolean> {
   const item = await getEvidence(id);
   if (!item || !item.libraryId) return false;
+  if (view === 'mobile') {
+    if (!item.mobile) return false;
+    if (item.mobileScreenshot) return true;
+    const blob = await downloadFile(await cloud(), storagePaths(item.libraryId, item.id).mobileScreenshot);
+    await attachScreenshot(id, blob, 'mobile');
+    return true;
+  }
   if (item.screenshot) return true;
   const blob = await downloadFile(await cloud(), storagePaths(item.libraryId, item.id).screenshot);
   await attachScreenshot(id, blob);
