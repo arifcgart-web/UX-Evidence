@@ -89,7 +89,7 @@ That's the whole setup. Every later `git push` redeploys the web app automatical
 | Capture a region | Click-and-drag instead of clicking |
 | Parent / child element | `↑` / `↓` while hovering, `Enter` to capture, `Esc` to cancel |
 | Whole visible page | The ▾ next to the capture button |
-| Shortcut | `⌘ ⇧ E` / `Ctrl ⇧ E` (change at `chrome://extensions/shortcuts`) |
+| Shortcut | `⌘ ⇧ E` / `Ctrl ⇧ E` captures the visible area (change at `chrome://extensions/shortcuts`) |
 | Save the form | `⌘ ↩` / `Ctrl ↩` — only *Observation* is required |
 | Switch library | Dropdown at the bottom of the popup |
 | Browse, search, edit, export | The web app |

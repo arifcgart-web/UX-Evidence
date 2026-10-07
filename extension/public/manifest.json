@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "UX Evidence Collector",
   "version": "0.2.0",
-  "description": "Capture UX patterns from any website, note why they matter, and build a searchable UX/CRO evidence library — alone or with your team.",
+  "description": "Capture UX patterns from any website, note why they matter, and build a searchable evidence library.",
   "minimum_chrome_version": "109",
 
   "action": {
@@ -34,7 +34,7 @@
         "default": "Ctrl+Shift+E",
         "mac": "Command+Shift+E"
       },
-      "description": "Start evidence capture on the current page"
+      "description": "Capture the visible area of the page"
     }
   },
 

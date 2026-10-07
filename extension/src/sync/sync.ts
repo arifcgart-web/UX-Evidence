@@ -9,7 +9,9 @@
  */
 
 import type { Library } from '@shared/evidence';
+import { normalizeCategory } from '@shared/evidence';
 import {
+  addLibraryCategory,
   deleteEvidence as deleteRemote,
   downloadFile,
   listEvidenceSince,
@@ -29,7 +31,7 @@ import {
   purgeEvidence,
 } from '../storage/evidenceStore';
 import { cloud, currentAccount, getConfig, isConfigured, type CloudConfig } from './client';
-import { META_ACTIVE_LIBRARY, META_LAST_ERROR, META_LAST_SYNC, META_LIBRARIES, metaPullCursor } from './keys';
+import { META_ACTIVE_LIBRARY, META_LAST_ERROR, META_LAST_SYNC, META_LIBRARIES, META_LOCAL_CATEGORIES, metaPullCursor } from './keys';
 
 export interface SyncStatus {
   configured: boolean;
@@ -37,6 +39,8 @@ export interface SyncStatus {
   account: { email: string } | null;
   libraries: Library[];
   activeLibraryId: string | null;
+  /** Custom categories for the active library (or the local list when signed out). */
+  categories: string[];
   lastSyncAt: string | null;
   lastError: string | null;
   pending: number;
@@ -56,6 +60,7 @@ export async function getStatus(): Promise<SyncStatus> {
     account: account ? { email: account.email } : null,
     libraries: (await metaGet<Library[]>(META_LIBRARIES)) ?? [],
     activeLibraryId: (await metaGet<string>(META_ACTIVE_LIBRARY)) ?? null,
+    categories: await getCategories(),
     lastSyncAt: (await metaGet<string>(META_LAST_SYNC)) ?? null,
     lastError: (await metaGet<string>(META_LAST_ERROR)) ?? null,
     pending,
@@ -120,6 +125,10 @@ async function afterSignIn(): Promise<void> {
     if (personal) {
       await metaSet(META_ACTIVE_LIBRARY, personal.id);
       await adoptLocalItems(personal.id);
+      // Categories added while signed out move into the library too.
+      const local = (await metaGet<string[]>(META_LOCAL_CATEGORIES)) ?? [];
+      for (const name of local) await addCategory(name).catch(() => undefined);
+      await metaDelete(META_LOCAL_CATEGORIES);
     }
   }
   void syncNow();
@@ -168,6 +177,42 @@ export async function refreshLibraries(): Promise<Library[]> {
   const active = await metaGet<string>(META_ACTIVE_LIBRARY);
   if (active && !libs.some((l) => l.id === active)) await metaDelete(META_ACTIVE_LIBRARY);
   return libs;
+}
+
+/** Custom categories the user can pick from right now. */
+export async function getCategories(): Promise<string[]> {
+  const active = await metaGet<string>(META_ACTIVE_LIBRARY);
+  const libs = (await metaGet<Library[]>(META_LIBRARIES)) ?? [];
+  const lib = active ? libs.find((l) => l.id === active) : undefined;
+  if (lib) return lib.categories ?? [];
+  return (await metaGet<string[]>(META_LOCAL_CATEGORIES)) ?? [];
+}
+
+/**
+ * Add a custom category. Signed in with an active library → saved to the
+ * library in the cloud so teammates see it too; otherwise kept locally.
+ */
+export async function addCategory(raw: string): Promise<string[]> {
+  const name = normalizeCategory(raw);
+  if (!name) throw new Error('Type a category name first.');
+
+  const active = await metaGet<string>(META_ACTIVE_LIBRARY);
+  const libs = (await metaGet<Library[]>(META_LIBRARIES)) ?? [];
+  const lib = active ? libs.find((l) => l.id === active) : undefined;
+
+  if (lib && (await currentAccount().catch(() => null))) {
+    const list = await addLibraryCategory(await cloud(), lib.id, name);
+    await metaSet(
+      META_LIBRARIES,
+      libs.map((l) => (l.id === lib.id ? { ...l, categories: list } : l)),
+    );
+    return list;
+  }
+
+  const local = (await metaGet<string[]>(META_LOCAL_CATEGORIES)) ?? [];
+  if (!local.some((c) => c.toLowerCase() === name.toLowerCase())) local.push(name);
+  await metaSet(META_LOCAL_CATEGORIES, local);
+  return local;
 }
 
 export async function setActiveLibrary(libraryId: string): Promise<void> {

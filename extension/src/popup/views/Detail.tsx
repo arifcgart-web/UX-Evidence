@@ -9,6 +9,8 @@ import { send } from '../messaging';
 interface Props {
   record: EvidenceRecord;
   knownTags: string[];
+  categories: string[];
+  onAddCategory: (name: string) => Promise<string[]>;
   canEdit: boolean;
   onBack: () => void;
   onTag: (tag: string) => void;
@@ -26,7 +28,7 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, onDelete, onReplace }: Props) {
+export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, onDelete, onReplace, categories, onAddCategory }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -174,7 +176,15 @@ export function Detail({ record, knownTags, canEdit, onBack, onTag, onUpdate, on
         )}
 
         {editing ? (
-          <EvidenceEditForm initial={initialFields} knownTags={knownTags} saving={saving} onSave={save} onCancel={() => setEditing(false)} />
+          <EvidenceEditForm
+            initial={initialFields}
+            knownTags={knownTags}
+            categories={categories}
+            onAddCategory={onAddCategory}
+            saving={saving}
+            onSave={save}
+            onCancel={() => setEditing(false)}
+          />
         ) : (
           <>
             <section className="block">

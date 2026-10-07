@@ -5,8 +5,8 @@
  * experienced user can type one sentence and hit ⌘↩.
  */
 
-import { CATEGORIES, type Category, type EvidenceFields, isCategory } from '../types/evidence';
-import type { DraftCreated } from '../types/messages';
+import { allCategories, type Category, type EvidenceFields, isCategory, MAX_CATEGORY_LENGTH, normalizeCategory } from '../types/evidence';
+import type { DraftCreated, Result } from '../types/messages';
 import { normalizeTags } from '@shared/search';
 import { openAnnotationEditor } from '@shared/annotationEditor';
 import { overlaySvg, type Shape } from '@shared/annotations';
@@ -64,6 +64,7 @@ function icon(path: string, size = 14): SVGSVGElement {
 const ICON_CLOSE = '<path d="M18 6 6 18M6 6l12 12"/>';
 const ICON_WARN = '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>';
 const ICON_CHEVRON = '<polyline points="9 18 15 12 9 6"/>';
+const NEW_CATEGORY = '__uxe_new__';
 const ICON_PEN = '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>';
 
 export interface FormResult {
@@ -82,6 +83,10 @@ export class EvidenceForm {
   private settled = false;
 
   private category!: HTMLSelectElement;
+  private customCategories: string[] = [];
+  private newCatRow!: HTMLDivElement;
+  private newCatInput!: HTMLInputElement;
+  private newCatError!: HTMLDivElement;
   private observation!: HTMLInputElement;
   private why!: HTMLInputElement;
   private notes!: HTMLTextAreaElement;
@@ -96,7 +101,10 @@ export class EvidenceForm {
     private host: HTMLElement,
     private draft: DraftCreated,
     private knownTags: string[],
-  ) {}
+    private addCategory: (name: string) => Promise<Result<string[]>>,
+  ) {
+    this.customCategories = draft.categories ?? [];
+  }
 
   open(): Promise<FormResult> {
     this.build();
@@ -183,16 +191,46 @@ export class EvidenceForm {
       body.append(note);
     }
 
-    // Category
+    // Category (built-ins + this library's own, plus "Add category…")
     this.category = el('select', 'uxe-select');
-    for (const c of CATEGORIES) {
-      const opt = el('option', undefined, c);
-      opt.value = c;
-      this.category.append(opt);
-    }
-    const suggested = suggestCategory(this.draft.context.pageType);
-    this.category.value = isCategory(suggested) ? suggested : 'Other';
-    body.append(this.field('Category', this.category));
+    this.fillCategories(suggestCategory(this.draft.context.pageType));
+    this.category.addEventListener('change', () => {
+      if (this.category.value === NEW_CATEGORY) this.showNewCategory();
+      else this.lastCategory = this.category.value;
+    });
+    const catField = this.field('Category', this.category);
+
+    this.newCatRow = el('div', 'uxe-newcat');
+    this.newCatRow.hidden = true;
+    this.newCatInput = el('input', 'uxe-input');
+    this.newCatInput.type = 'text';
+    this.newCatInput.maxLength = MAX_CATEGORY_LENGTH;
+    this.newCatInput.placeholder = 'New category name';
+    this.newCatInput.setAttribute('aria-label', 'New category name');
+    const addBtn = el('button', 'uxe-btn primary sm', 'Add');
+    addBtn.type = 'button';
+    addBtn.addEventListener('click', () => void this.commitNewCategory());
+    const cancelBtn = el('button', 'uxe-btn ghost sm', 'Cancel');
+    cancelBtn.type = 'button';
+    cancelBtn.addEventListener('click', () => this.hideNewCategory());
+    this.newCatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        void this.commitNewCategory();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.hideNewCategory();
+      }
+    });
+    const row = el('div', 'uxe-newcat-row');
+    row.append(this.newCatInput, addBtn, cancelBtn);
+    this.newCatError = el('div', 'uxe-error');
+    this.newCatError.hidden = true;
+    this.newCatRow.append(row, this.newCatError);
+    catField.append(this.newCatRow);
+    body.append(catField);
 
     // Observation (required)
     this.observation = el('input', 'uxe-input');
@@ -290,6 +328,66 @@ export class EvidenceForm {
     this.previewOverlay.style.height = `${h}px`;
     this.previewOverlay.innerHTML = overlaySvg(this.shapes, w, h);
     this.annotateBtn.lastElementChild!.textContent = this.shapes.length ? `Markings (${this.shapes.length})` : 'Annotate';
+  }
+
+  // ---------------------------------------------------------------------
+  // Categories
+  // ---------------------------------------------------------------------
+
+  private fillCategories(selected: string) {
+    this.category.replaceChildren();
+    for (const c of allCategories(this.customCategories, selected)) {
+      const opt = el('option', undefined, c);
+      opt.value = c;
+      this.category.append(opt);
+    }
+    const add = el('option', undefined, '+ Add category…');
+    add.value = NEW_CATEGORY;
+    this.category.append(add);
+    this.category.value = isCategory(selected) ? selected : 'Other';
+    this.lastCategory = this.category.value;
+  }
+
+  private lastCategory = 'Other';
+
+  private showNewCategory() {
+    this.newCatRow.hidden = false;
+    this.newCatInput.value = '';
+    this.newCatError.hidden = true;
+    this.newCatInput.focus();
+  }
+
+  private hideNewCategory() {
+    this.newCatRow.hidden = true;
+    this.category.value = this.lastCategory;
+    this.category.focus();
+  }
+
+  private async commitNewCategory() {
+    const name = normalizeCategory(this.newCatInput.value);
+    if (!name) {
+      this.newCatError.textContent = 'Type a category name first.';
+      this.newCatError.hidden = false;
+      return;
+    }
+    const existing = allCategories(this.customCategories).find((c) => c.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      this.newCatRow.hidden = true;
+      this.fillCategories(existing);
+      return;
+    }
+    this.newCatInput.disabled = true;
+    const res = await this.addCategory(name);
+    this.newCatInput.disabled = false;
+    if (!res.ok) {
+      this.newCatError.textContent = res.error;
+      this.newCatError.hidden = false;
+      return;
+    }
+    this.customCategories = res.data;
+    this.newCatRow.hidden = true;
+    this.fillCategories(name);
+    this.lastCategory = name;
   }
 
   private field(labelText: string, control: HTMLElement, optional = false): HTMLDivElement {
@@ -396,7 +494,7 @@ export class EvidenceForm {
       this.observation.focus();
       return;
     }
-    const category = this.category.value;
+    const category = this.category.value === NEW_CATEGORY ? this.lastCategory : this.category.value;
     this.close({
       action: 'save',
       fields: {

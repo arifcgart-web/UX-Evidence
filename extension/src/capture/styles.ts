@@ -184,6 +184,10 @@ export const OVERLAY_CSS = /* css */ `
     background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px;
   }
   .uxe-error { color: #dc2626; font-size: 11px; margin-top: 4px; }
+  .uxe-newcat { margin-top: 8px; }
+  .uxe-newcat-row { display: flex; gap: 6px; align-items: center; }
+  .uxe-newcat-row .uxe-input { flex: 1; min-width: 0; }
+  .uxe-btn.sm { padding: 7px 10px; font-size: 12px; white-space: nowrap; }
 
   .uxe-tags {
     display: flex; flex-wrap: wrap; gap: 6px; align-items: center;

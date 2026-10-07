@@ -89,6 +89,11 @@ export interface SetLibraryMsg {
 export interface RefreshLibrariesMsg {
   type: 'REFRESH_LIBRARIES';
 }
+/** any -> worker: add a custom category to the active library (or the local list). Returns the custom list. */
+export interface AddCategoryMsg {
+  type: 'ADD_CATEGORY';
+  name: string;
+}
 export interface FetchScreenshotMsg {
   type: 'FETCH_SCREENSHOT';
   id: string;
@@ -118,6 +123,7 @@ export type ExtensionMessage =
   | SignOutMsg
   | SetLibraryMsg
   | RefreshLibrariesMsg
+  | AddCategoryMsg
   | FetchScreenshotMsg
   | SetCloudConfigMsg
   | LocalChangedMsg;
@@ -133,6 +139,8 @@ export interface DraftCreated {
   previewHeight: number;
   context: CaptureContext;
   clipped: boolean;
+  /** Custom categories available to the form (active library's, or local). */
+  categories: string[];
 }
 
 export function ok<T>(data: T): Result<T> {

@@ -1099,3 +1099,17 @@ kbd {
 .spin {
   animation: spin 1s linear infinite;
 }
+
+/* Inline "add category" row under the category select */
+.newcat {
+  margin-top: 8px;
+}
+.newcat-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.newcat-row .input {
+  flex: 1;
+  min-width: 0;
+}

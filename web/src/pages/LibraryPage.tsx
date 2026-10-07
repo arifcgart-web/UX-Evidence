@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { CATEGORIES, canEdit, isCategory, type Category, type EvidenceFields } from '@shared/evidence';
+import { allCategories, canEdit, isCategory, type Category, type EvidenceFields } from '@shared/evidence';
 import { collectDomains, collectTags, queryEvidence, type SortOrder } from '@shared/search';
 import {
+  addLibraryCategory,
   deleteEvidence,
   listEvidence,
   listMembers,
@@ -51,8 +52,19 @@ function Favicon({ domain }: { domain: string }) {
 
 export function LibraryPage() {
   const { libraryId = '' } = useParams();
-  const { libraries } = useLibraries();
+  const { libraries, refresh: refreshLibraries } = useLibraries();
   const library = libraries.find((l) => l.id === libraryId);
+  const customCategories = library?.categories ?? [];
+
+  const addCategory = useCallback(
+    async (name: string) => {
+      if (!libraryId) throw new Error('No library selected');
+      const list = await addLibraryCategory(supabase(), libraryId, name);
+      await refreshLibraries();
+      return list;
+    },
+    [libraryId, refreshLibraries],
+  );
   const editable = canEdit(library?.role);
 
   const [items, setItems] = useState<RemoteEvidence[]>([]);
@@ -246,7 +258,7 @@ export function LibraryPage() {
         </div>
         <select className="select sm" value={filters.category ?? ''} onChange={(e) => setFilter('cat', e.target.value || null)} aria-label="Category">
           <option value="">All categories</option>
-          {CATEGORIES.map((c) => (
+          {allCategories(customCategories, filters.category).map((c) => (
             <option key={c} value={c}>
               {c}
             </option>
@@ -393,6 +405,8 @@ export function LibraryPage() {
           screenshotUrl={urls.get(selected.screenshotPath)}
           editable={editable}
           knownTags={tags}
+          categories={customCategories}
+          onAddCategory={addCategory}
           addedBy={selected.createdBy ? people.get(selected.createdBy) ?? null : null}
           onClose={() => setSelectedId(null)}
           onTag={(t) => setFilter('tag', t)}
@@ -412,6 +426,8 @@ interface DrawerProps {
   screenshotUrl: string | undefined;
   editable: boolean;
   knownTags: string[];
+  categories: string[];
+  onAddCategory: (name: string) => Promise<string[]>;
   addedBy: string | null;
   onClose: () => void;
   onTag: (tag: string) => void;
@@ -420,7 +436,7 @@ interface DrawerProps {
   onAnnotate: (item: RemoteEvidence) => Promise<void>;
 }
 
-function DetailDrawer({ item, screenshotUrl, editable, knownTags, addedBy, onClose, onTag, onUpdate, onDelete, onAnnotate }: DrawerProps) {
+function DetailDrawer({ item, screenshotUrl, editable, knownTags, categories, onAddCategory, addedBy, onClose, onTag, onUpdate, onDelete, onAnnotate }: DrawerProps) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -531,6 +547,8 @@ function DetailDrawer({ item, screenshotUrl, editable, knownTags, addedBy, onClo
             <EvidenceEditForm
               initial={{ category: item.category, observation: item.observation, whyItMatters: item.whyItMatters, notes: item.notes, tags: item.tags }}
               knownTags={knownTags}
+              categories={categories}
+              onAddCategory={onAddCategory}
               saving={saving}
               onSave={save}
               onCancel={() => setEditing(false)}

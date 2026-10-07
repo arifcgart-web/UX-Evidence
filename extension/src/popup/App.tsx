@@ -5,6 +5,7 @@ import { Detail } from './views/Detail';
 import { Settings } from './views/Settings';
 import { collectTags } from '../storage/evidenceStore';
 import type { EvidenceState } from './useEvidence';
+import { send } from './messaging';
 
 /** Viewers of a shared library can look but not change. */
 function canEditActive(e: EvidenceState): boolean {
@@ -23,6 +24,16 @@ export function App() {
 
   const knownTags = useMemo(() => collectTags(evidence.records), [evidence.records]);
   const goHome = useCallback(() => setView({ name: 'home' }), []);
+
+  const addCategory = useCallback(
+    async (name: string) => {
+      const res = await send<string[]>({ type: 'ADD_CATEGORY', name });
+      if (!res.ok) throw new Error(res.error);
+      await evidence.refreshStatus();
+      return res.data;
+    },
+    [evidence],
+  );
 
   const filterByTag = useCallback((tag: string) => {
     setFilters({ ...EMPTY_FILTERS, tag });
@@ -45,6 +56,8 @@ export function App() {
           onUpdate={evidence.update}
           onDelete={evidence.remove}
           onReplace={evidence.replaceRecord}
+          categories={evidence.status?.categories ?? []}
+          onAddCategory={addCategory}
           canEdit={canEditActive(evidence)}
         />
       );

@@ -1,16 +1,21 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
-import { CATEGORIES, isCategory, type EvidenceFields } from '../../types/evidence';
+import type { EvidenceFields } from '../../types/evidence';
+import { CategorySelect } from './CategorySelect';
 import { TagInput } from './TagInput';
 
 interface Props {
   initial: EvidenceFields;
   knownTags: string[];
+  /** Custom categories of the library this item belongs to. */
+  categories?: string[];
+  /** Adds a custom category; resolves to the updated list. Omit to hide the option. */
+  onAddCategory?: (name: string) => Promise<string[]>;
   saving: boolean;
   onSave: (fields: EvidenceFields) => void;
   onCancel: () => void;
 }
 
-export function EvidenceEditForm({ initial, knownTags, saving, onSave, onCancel }: Props) {
+export function EvidenceEditForm({ initial, knownTags, categories = [], onAddCategory, saving, onSave, onCancel }: Props) {
   const [fields, setFields] = useState<EvidenceFields>(initial);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,18 +40,7 @@ export function EvidenceEditForm({ initial, knownTags, saving, onSave, onCancel 
     <form className="edit-form" onSubmit={submit} onKeyDown={onKeyDown}>
       <div className="field">
         <label htmlFor="f-category">Category</label>
-        <select
-          id="f-category"
-          className="select"
-          value={fields.category}
-          onChange={(e) => set('category', isCategory(e.target.value) ? e.target.value : 'Other')}
-        >
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <CategorySelect id="f-category" value={fields.category} custom={categories} onAdd={onAddCategory} onChange={(c) => set('category', c)} />
       </div>
 
       <div className="field">

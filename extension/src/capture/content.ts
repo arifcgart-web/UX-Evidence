@@ -78,7 +78,9 @@ function init() {
     }
 
     const tags = await send<string[]>({ type: 'GET_KNOWN_TAGS' });
-    const form = new EvidenceForm(root, host, draft.data, tags.ok ? tags.data : []);
+    const form = new EvidenceForm(root, host, draft.data, tags.ok ? tags.data : [], (name) =>
+      send<string[]>({ type: 'ADD_CATEGORY', name }),
+    );
 
     let result = await form.open();
     while (result.action === 'save') {

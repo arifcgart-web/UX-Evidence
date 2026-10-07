@@ -115,11 +115,14 @@ export async function listLibraries(db: SupabaseClient): Promise<Library[]> {
 
   const { data, error } = await db
     .from('library_members')
-    .select('role, libraries ( id, name, owner_id, is_personal, created_at )')
+    .select('role, libraries ( id, name, owner_id, is_personal, created_at, categories )')
     .eq('user_id', uid);
   throwIf(error);
 
-  type Row = { role: LibraryRole; libraries: { id: string; name: string; owner_id: string; is_personal: boolean; created_at: string } | null };
+  type Row = {
+    role: LibraryRole;
+    libraries: { id: string; name: string; owner_id: string; is_personal: boolean; created_at: string; categories: string[] | null } | null;
+  };
   return ((data ?? []) as unknown as Row[])
     .filter((r) => r.libraries)
     .map((r) => ({
@@ -129,6 +132,7 @@ export async function listLibraries(db: SupabaseClient): Promise<Library[]> {
       isPersonal: r.libraries!.is_personal,
       role: r.role,
       createdAt: r.libraries!.created_at,
+      categories: r.libraries!.categories ?? [],
     }))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
@@ -140,6 +144,16 @@ export async function createLibrary(db: SupabaseClient, name: string): Promise<s
   const { data, error } = await db.from('libraries').insert({ name, owner_id: uid }).select('id').single();
   throwIf(error);
   return (data as { id: string }).id;
+}
+
+/**
+ * Add a custom category to a library (owners and editors). Returns the
+ * library's full custom list afterwards. Case-insensitive duplicates are ignored.
+ */
+export async function addLibraryCategory(db: SupabaseClient, libraryId: string, name: string): Promise<string[]> {
+  const { data, error } = await db.rpc('add_library_category', { p_library: libraryId, p_name: name });
+  throwIf(error);
+  return (data as string[] | null) ?? [];
 }
 
 export async function renameLibrary(db: SupabaseClient, id: string, name: string): Promise<void> {

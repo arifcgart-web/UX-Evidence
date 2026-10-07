@@ -23,8 +23,12 @@ export const CATEGORIES = [
   'Other',
 ] as const;
 
-export type Category = (typeof CATEGORIES)[number];
+/** Built-in category names. Libraries can add their own (see `allCategories`). */
+export type BuiltInCategory = (typeof CATEGORIES)[number];
+/** Any built-in or library-defined category name. */
+export type Category = string;
 export const DEFAULT_CATEGORY: Category = 'Other';
+export const MAX_CATEGORY_LENGTH = 40;
 
 export type CaptureMode = 'element' | 'region' | 'visible';
 
@@ -75,10 +79,40 @@ export interface Library {
   isPersonal: boolean;
   role: LibraryRole;
   createdAt: string;
+  /** Custom categories added by this library's members, in insertion order. */
+  categories: string[];
 }
 
+/** A usable category name: non-empty, trimmed, within the length limit. */
 export function isCategory(value: unknown): value is Category {
-  return typeof value === 'string' && (CATEGORIES as readonly string[]).includes(value);
+  return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= MAX_CATEGORY_LENGTH;
+}
+
+/** Clean up a user-typed category name; returns null when unusable. */
+export function normalizeCategory(value: string): string | null {
+  const name = value.replace(/\s+/g, ' ').trim().slice(0, MAX_CATEGORY_LENGTH);
+  return name ? name : null;
+}
+
+/**
+ * Built-ins first, then the library's own categories, with "Other" kept last.
+ * Case-insensitive de-duplication; `extra` makes sure a value that is no
+ * longer in either list (e.g. an old item) still shows up in a select.
+ */
+export function allCategories(custom: readonly string[] = [], extra?: string | null): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (c: string) => {
+    const key = c.toLowerCase();
+    if (!c || seen.has(key)) return;
+    seen.add(key);
+    out.push(c);
+  };
+  for (const c of CATEGORIES) if (c !== DEFAULT_CATEGORY) push(c);
+  for (const c of custom) push(c);
+  if (extra && extra !== DEFAULT_CATEGORY) push(extra);
+  push(DEFAULT_CATEGORY);
+  return out;
 }
 
 export function emptyFields(category: Category = DEFAULT_CATEGORY): EvidenceFields {

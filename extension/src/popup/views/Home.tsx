@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Category, EvidenceRecord } from '../../types/evidence';
-import { CATEGORIES, isCategory } from '../../types/evidence';
+import { allCategories, isCategory } from '../../types/evidence';
 import { collectDomains, collectTags, queryEvidence, type SortOrder } from '../../storage/evidenceStore';
 import { EvidenceCard } from '../components/EvidenceCard';
 import { Icon } from '../components/Icon';
@@ -187,7 +187,7 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
               aria-label="Filter by category"
             >
               <option value="">All categories</option>
-              {CATEGORIES.map((c) => (
+              {allCategories(status?.categories ?? [], filters.category).map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
@@ -268,7 +268,7 @@ export function Home({ records, loading, error, status, thumbUrl, filters, onFil
               Spot a pattern worth remembering? Hit <strong>Capture Evidence</strong>, pick the element, and note why it matters.
             </p>
             <p className="hint">
-              Shortcut: <kbd>{/Mac/.test(navigator.platform) ? '⌘' : 'Ctrl'}</kbd> <kbd>Shift</kbd> <kbd>E</kbd>
+              <kbd>{/Mac/.test(navigator.platform) ? '⌘' : 'Ctrl'}</kbd> <kbd>Shift</kbd> <kbd>E</kbd> captures the visible area
             </p>
           </div>
         )}

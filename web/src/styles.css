@@ -52,7 +52,7 @@
 
 :root[data-theme='mix'],
 :root[data-theme='dark'] {
-  --glass: rgba(20, 20, 24, 0.38);
+  --glass: rgba(20, 20, 24, 0.62);
   --panel-edge: rgba(255, 255, 255, 0.14);
   --side-bg: transparent;
   --side-text: #ffffff;
@@ -1229,6 +1229,10 @@ code {
 }
 .thumb-badge.cat {
   left: 10px;
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 .thumb-badge.marks {
   right: 10px;
@@ -1881,4 +1885,18 @@ code {
     width: auto;
     max-width: none;
   }
+}
+
+/* Inline "add category" row under the category select */
+.newcat {
+  margin-top: 8px;
+}
+.newcat-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.newcat-row .input {
+  flex: 1;
+  min-width: 0;
 }

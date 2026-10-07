@@ -25,8 +25,10 @@ import { metaGet } from '../storage/db';
 import { processCapture } from '../utils/image';
 import { friendlyError, restrictionReason } from '../utils/restrictedPages';
 import {
+  addCategory,
   adoptSession,
   fetchScreenshot,
+  getCategories,
   getStatus,
   refreshLibraries,
   requestCode,
@@ -114,6 +116,7 @@ async function captureArea(
       previewWidth: processed.previewWidth,
       previewHeight: processed.previewHeight,
       context: message.context,
+      categories: await getCategories().catch(() => []),
       clipped: message.clipped,
     });
   } catch (error) {
@@ -215,6 +218,13 @@ async function handle(
         return fail(authError(error));
       }
 
+    case 'ADD_CATEGORY':
+      try {
+        return ok(await addCategory(message.name));
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : "The category couldn't be added.");
+      }
+
     case 'FETCH_SCREENSHOT':
       try {
         return ok(await fetchScreenshot(message.id));
@@ -284,7 +294,7 @@ chrome.runtime.onMessageExternal.addListener(
 // Keyboard shortcut (Cmd/Ctrl+Shift+E). Chrome grants activeTab for commands,
 // so this needs no extra permission.
 chrome.commands.onCommand.addListener((command) => {
-  if (command === 'start-capture') void startCapture('element');
+  if (command === 'start-capture') void startCapture('visible');
 });
 
 // Housekeeping + background sync
